@@ -27,6 +27,7 @@ var (
 	p2pNetBridge  *p2pBridge
 	lock          sync.RWMutex
 	udpConnStatus bool
+	connStatus    bool
 )
 
 type p2pBridge struct {
@@ -167,6 +168,8 @@ func handleSecret(localTcpConn net.Conn, config *config.CommonConfig, l *config.
 func handleP2PVisitor(localTcpConn net.Conn, config *config.CommonConfig, l *config.LocalServer) {
 	if udpConn == nil {
 		logs.Notice("new conn, P2P can not penetrate successfully, traffic will be transferred through the server")
+		l.ConnStatus = "relay"
+		logs.Info("now connect Type :", l.ConnStatus)
 		handleSecret(localTcpConn, config, l)
 		return
 	}
@@ -178,6 +181,8 @@ func handleP2PVisitor(localTcpConn net.Conn, config *config.CommonConfig, l *con
 		udpConnStatus = false
 		return
 	} else {
+		l.ConnStatus = "P2P"
+		logs.Info("now connect Type :", l.ConnStatus)
 		conn.CopyWaitGroup(target, localTcpConn, false, config.Client.Cnf.Compress, nil, nil, false, nil)
 	}
 }
