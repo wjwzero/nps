@@ -10,6 +10,8 @@ import (
 
 var cl *client.TRPClient
 
+var npclient *npc
+
 //export StartClientByVerifyKey
 func StartClientByVerifyKey(serverAddr, verifyKey, connType, proxyUrl *C.char) int {
 	_ = logs.SetLogger("store")
@@ -41,6 +43,11 @@ func Version() *C.char {
 //export Logs
 func Logs() *C.char {
 	return C.CString(common.GetLogMsg())
+}
+
+//export ConnectStatus
+func ConnectStatus() string {
+	return npclient.connStatus()
 }
 
 func main() {

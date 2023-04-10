@@ -39,6 +39,7 @@ var (
 	stunAddr       = flag.String("stun_addr", "stun.stunprotocol.org:3478", "stun server address (eg:stun.stunprotocol.org:3478)")
 	ver            = flag.Bool("version", false, "show current version")
 	disconnectTime = flag.Int("disconnect_timeout", 60, "not receiving check packet times, until timeout will disconnect the client")
+	localServer    *config.LocalServer
 )
 
 func main() {
@@ -243,4 +244,8 @@ func run() {
 		}
 		go client.StartFromFile(*configPath)
 	}
+}
+
+func (p *npc) connStatus() string {
+	return localServer.ConnStatus
 }
