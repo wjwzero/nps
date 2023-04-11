@@ -524,3 +524,58 @@ func getRandomPortArr(min, max int) []int {
 	}
 	return addrAddr
 }
+
+func handleRemoteLocalTcp(localAddr, rAddr, md5Password, role string, targetPort string) (remoteAddress string, err error) {
+	localConn, err := newUdpConnByAddr(localAddr)
+	if err != nil {
+		return
+	}
+	err = getRemoteAddressFromServer(rAddr, localConn, md5Password, role, 0)
+	if err != nil {
+		logs.Error(err)
+		return
+	}
+	err = getRemoteAddressFromServer(rAddr, localConn, md5Password, role, 1)
+	if err != nil {
+		logs.Error(err)
+		return
+	}
+	err = getRemoteAddressFromServer(rAddr, localConn, md5Password, role, 2)
+	if err != nil {
+		logs.Error(err)
+		return
+	}
+	var remoteAddr1, remoteAddr2, remoteAddr3 string
+	var remoteLocalAddr1, remoteLocalAddr2, remoteLocalAddr3 string
+	for {
+		buf := make([]byte, 1024)
+		if n, addr, er := localConn.ReadFromUDP(buf); er != nil {
+			err = er
+			return
+		} else {
+			rAddr2, _ := getNextAddr(rAddr, 1)
+			rAddr3, _ := getNextAddr(rAddr, 2)
+			arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
+			switch addr.String() {
+			case rAddr:
+				remoteAddr1 = arr[0]
+				remoteLocalAddr1 = arr[1]
+			case rAddr2:
+				arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
+				remoteAddr2 = arr[0]
+				remoteLocalAddr2 = arr[1]
+			case rAddr3:
+				arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
+				remoteAddr3 = arr[0]
+				remoteLocalAddr3 = arr[1]
+			}
+		}
+		if remoteAddr1 != "" && remoteAddr2 != "" && remoteAddr3 != "" {
+			break
+		}
+	}
+	if remoteAddress, err = sendTcpTestMsg(localConn, remoteLocalAddr1, remoteLocalAddr2, remoteLocalAddr3, targetPort); err != nil {
+		return
+	}
+	return
+}
