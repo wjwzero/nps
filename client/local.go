@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -221,4 +222,42 @@ func newUdpConn(localAddr string, config *config.CommonConfig, l *config.LocalSe
 	udpConn = udpTunnel
 	muxSession = nps_mux.NewMux(udpConn, "kcp", config.DisconnectTime)
 	p2pNetBridge = &p2pBridge{}
+}
+
+func newRemoteLocalConn(localTcpConn net.Conn, localAddr string, config *config.CommonConfig, l *config.LocalServer) (err error) {
+	var remoteConn *conn.Conn
+	remoteConn, err = NewConn(config.Tp, config.VKey, config.Server, common.WORK_P2P, config.ProxyUrl)
+	if err != nil {
+		logs.Error("Local connection server failed ", err.Error())
+		return
+	}
+	// common.WORK_P2P 因预创建，需要对称加密
+	if err = remoteConn.WriteLenContent([]byte(common.GetAesEnVerifyval(l.Password))); err != nil {
+		logs.Error("Local connection server failed ", err.Error())
+		return
+	}
+	var rAddr []byte
+	//读取服务端地址、密钥 继续做处理
+	if rAddr, err = remoteConn.GetShortLenContent(); err != nil {
+		logs.Error(err)
+		return
+	}
+	if strings.HasPrefix(string(rAddr), "{[checked]}") {
+		logs.Error(string(rAddr))
+		return
+	}
+	var remoteAddress string
+	if remoteAddress, err = handleRemoteLocalTcp(localAddr, string(rAddr), common.GetAesEnVerifyval(l.Password), common.WORK_P2P_VISITOR, l.Target); err != nil {
+		logs.Error(err)
+		return
+	}
+	arr := strings.Split(remoteAddress, ":")
+	logs.Info("局域网 Remote Local connection server ", remoteAddress)
+	remoteLocalConn, err := NewRemoteLocalConn(arr[0] + ":" + l.Target)
+	if err != nil {
+		logs.Error("Local connection server failed ", err.Error())
+		return
+	}
+	conn.CopyWaitGroup(remoteLocalConn.Conn, localTcpConn, false, false, nil, nil, false, nil)
+	return
 }
