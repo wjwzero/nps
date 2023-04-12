@@ -99,6 +99,18 @@ func Getverifyval(vkey string) string {
 	return crypt.Md5(vkey)
 }
 
+var key = "sssxxaazzz"
+
+//Get AES En verify value
+func GetAesEnVerifyval(vkey string) string {
+	return crypt.AesEncryptBase64(vkey, key)
+}
+
+//Get AES En verify value
+func GetAesDnVerifyval(enVkey string) string {
+	return crypt.AesDecryptBase64(enVkey, key)
+}
+
 //Change headers and host of request
 func ChangeHostAndHeader(r *http.Request, host string, header string, addr string, addOrigin bool) {
 	if host != "" {
