@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -34,6 +35,7 @@ var (
 
 func main() {
 	flag.Parse()
+	debug.SetMaxThreads(40000)
 	// init log
 	if *ver {
 		common.PrintVersion()
@@ -45,6 +47,10 @@ func main() {
 	common.InitPProfFromFile()
 	if level = beego.AppConfig.String("log_level"); level == "" {
 		level = "7"
+	}
+	maxThreads, errThreads := beego.AppConfig.Int("max_threads")
+	if errThreads == nil {
+		debug.SetMaxThreads(maxThreads)
 	}
 	logs.Reset()
 	logs.EnableFuncCallDepth(true)
