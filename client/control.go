@@ -235,7 +235,8 @@ func NewConn(tp string, vkey string, server string, connType string, proxyUrl st
 		logs.Error("The client does not match the server version. The current core version of the client is", version.GetVersion())
 		return nil, err
 	}
-	if _, err := c.Write([]byte(common.Getverifyval(vkey))); err != nil {
+	if err := c.WriteLenContent([]byte(common.GetAesEnVerifyval(vkey))); err != nil {
+		//if _, err := c.Write([]byte(common.Getverifyval(vkey))); err != nil {
 		return nil, err
 	}
 	if s, err := c.ReadFlag(); err != nil {
@@ -248,6 +249,21 @@ func NewConn(tp string, vkey string, server string, connType string, proxyUrl st
 	}
 	c.SetAlive(tp)
 
+	return c, nil
+}
+
+// Create a new connection with the server and verify it
+func NewRemoteLocalConn(server string) (*conn.Conn, error) {
+	var err error
+	var connection net.Conn
+	connection, err = net.Dial("tcp", server)
+	if err != nil {
+		return nil, err
+	}
+	connection.SetDeadline(time.Now().Add(time.Second * 10))
+	defer connection.SetDeadline(time.Time{})
+	c := conn.NewConn(connection)
+	c.SetAlive("tcp")
 	return c, nil
 }
 
@@ -294,7 +310,8 @@ func getRemoteAddressFromServer(rAddr string, localConn *net.UDPConn, md5Passwor
 	if err != nil {
 		return err
 	}
-	if _, err := localConn.WriteTo(common.GetWriteStr(md5Password, role), addr); err != nil {
+	// 向NPS 发送地址
+	if _, err := localConn.WriteTo(common.GetWriteStr(md5Password, role, localConn.LocalAddr().String()), addr); err != nil {
 		return err
 	}
 	return nil
@@ -329,23 +346,96 @@ func handleP2PUdp(localAddr, rAddr, md5Password, role string) (remoteAddress str
 		} else {
 			rAddr2, _ := getNextAddr(rAddr, 1)
 			rAddr3, _ := getNextAddr(rAddr, 2)
+			arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
 			switch addr.String() {
 			case rAddr:
-				remoteAddr1 = string(buf[:n])
+				remoteAddr1 = arr[0]
 			case rAddr2:
-				remoteAddr2 = string(buf[:n])
+				remoteAddr2 = arr[0]
 			case rAddr3:
-				remoteAddr3 = string(buf[:n])
+				remoteAddr3 = arr[0]
 			}
 		}
 		if remoteAddr1 != "" && remoteAddr2 != "" && remoteAddr3 != "" {
 			break
 		}
 	}
+
 	if remoteAddress, err = sendP2PTestMsg(localConn, remoteAddr1, remoteAddr2, remoteAddr3); err != nil {
 		return
 	}
 	c, err = newUdpConnByAddr(localAddr)
+	return
+}
+
+func handleRemoteLocalTcp(localAddr, rAddr, md5Password, role string, targetPort string) (remoteAddress string, err error) {
+	localConn, err := newUdpConnByAddr(localAddr)
+	if err != nil {
+		return
+	}
+	err = getRemoteAddressFromServer(rAddr, localConn, md5Password, role, 0)
+	if err != nil {
+		logs.Error(err)
+		return
+	}
+	err = getRemoteAddressFromServer(rAddr, localConn, md5Password, role, 1)
+	if err != nil {
+		logs.Error(err)
+		return
+	}
+	err = getRemoteAddressFromServer(rAddr, localConn, md5Password, role, 2)
+	if err != nil {
+		logs.Error(err)
+		return
+	}
+	var remoteAddr1, remoteAddr2, remoteAddr3 string
+	var remoteLocalAddr1, remoteLocalAddr2, remoteLocalAddr3 string
+	for {
+		buf := make([]byte, 1024)
+		if n, addr, er := localConn.ReadFromUDP(buf); er != nil {
+			err = er
+			return
+		} else {
+			rAddr2, _ := getNextAddr(rAddr, 1)
+			rAddr3, _ := getNextAddr(rAddr, 2)
+			arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
+			switch addr.String() {
+			case rAddr:
+				remoteAddr1 = arr[0]
+				remoteLocalAddr1 = arr[1]
+			case rAddr2:
+				arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
+				remoteAddr2 = arr[0]
+				remoteLocalAddr2 = arr[1]
+			case rAddr3:
+				arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
+				remoteAddr3 = arr[0]
+				remoteLocalAddr3 = arr[1]
+			}
+		}
+		if remoteAddr1 != "" && remoteAddr2 != "" && remoteAddr3 != "" {
+			break
+		}
+	}
+	if remoteAddress, err = sendTcpTestMsg(localConn, remoteLocalAddr1, remoteLocalAddr2, remoteLocalAddr3, targetPort); err != nil {
+		return
+	}
+	return
+}
+
+var TIMEOUT = 300 * time.Millisecond // 设置连接超时时间
+func sendTcpTestMsg(localConn *net.UDPConn, remoteAddr1, remoteAddr2, remoteAddr3 string, targetPort string) (remoteAddr string, err error) {
+	logs.Trace(remoteAddr3, remoteAddr2, remoteAddr1)
+	arr := strings.Split(remoteAddr1, ":")
+	defer localConn.Close()
+	var tcpConn net.Conn
+	tcpConn, err = net.DialTimeout("tcp", arr[0]+":"+targetPort, TIMEOUT)
+	if err != nil {
+		err = errors.New("LAN Error connect to the target failed, maybe the not in LAN ....." + err.Error())
+		return
+	}
+	defer tcpConn.Close()
+	remoteAddr = remoteAddr1
 	return
 }
 
@@ -447,6 +537,10 @@ func sendP2PTestMsg(localConn *net.UDPConn, remoteAddr1, remoteAddr2, remoteAddr
 			continue
 		}
 	}
+	//resp, err := http.Get(cloudAddr + "/skyworthDispatch/node/nps/ip?deviceKey=" + deviceKey)
+	//if err != nil {
+	//	return "", err
+	//}
 	return "", errors.New("connect to the target failed, maybe the nat type is not support p2p")
 }
 
@@ -523,59 +617,4 @@ func getRandomPortArr(min, max int) []int {
 		addrAddr[r] = temp
 	}
 	return addrAddr
-}
-
-func handleRemoteLocalTcp(localAddr, rAddr, md5Password, role string, targetPort string) (remoteAddress string, err error) {
-	localConn, err := newUdpConnByAddr(localAddr)
-	if err != nil {
-		return
-	}
-	err = getRemoteAddressFromServer(rAddr, localConn, md5Password, role, 0)
-	if err != nil {
-		logs.Error(err)
-		return
-	}
-	err = getRemoteAddressFromServer(rAddr, localConn, md5Password, role, 1)
-	if err != nil {
-		logs.Error(err)
-		return
-	}
-	err = getRemoteAddressFromServer(rAddr, localConn, md5Password, role, 2)
-	if err != nil {
-		logs.Error(err)
-		return
-	}
-	var remoteAddr1, remoteAddr2, remoteAddr3 string
-	var remoteLocalAddr1, remoteLocalAddr2, remoteLocalAddr3 string
-	for {
-		buf := make([]byte, 1024)
-		if n, addr, er := localConn.ReadFromUDP(buf); er != nil {
-			err = er
-			return
-		} else {
-			rAddr2, _ := getNextAddr(rAddr, 1)
-			rAddr3, _ := getNextAddr(rAddr, 2)
-			arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
-			switch addr.String() {
-			case rAddr:
-				remoteAddr1 = arr[0]
-				remoteLocalAddr1 = arr[1]
-			case rAddr2:
-				arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
-				remoteAddr2 = arr[0]
-				remoteLocalAddr2 = arr[1]
-			case rAddr3:
-				arr := strings.Split(string(buf[:n]), common.CONN_DATA_SEQ)
-				remoteAddr3 = arr[0]
-				remoteLocalAddr3 = arr[1]
-			}
-		}
-		if remoteAddr1 != "" && remoteAddr2 != "" && remoteAddr3 != "" {
-			break
-		}
-	}
-	if remoteAddress, err = sendTcpTestMsg(localConn, remoteLocalAddr1, remoteLocalAddr2, remoteLocalAddr3, targetPort); err != nil {
-		return
-	}
-	return
 }
