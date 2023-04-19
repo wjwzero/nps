@@ -1,0 +1,17 @@
+[Unit]
+Description=nps
+Documentation=https://docs.cloudreve.org
+Wants=network.target
+
+[Service]
+WorkingDirectory=/root/nps
+ExecStart=/root/nps/nps service
+Restart=on-failure
+RestartSec=5s
+KillMode=mixed
+
+StandardOutput=null
+StandardError=syslog
+
+[Install]
+WantedBy=multi-user.target
