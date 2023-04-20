@@ -2,6 +2,7 @@ package client
 
 import (
 	"ehang.io/nps-mux"
+	"ehang.io/nps/lib/crypt"
 	"errors"
 	"net"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/config"
 	"ehang.io/nps/lib/conn"
-	"ehang.io/nps/lib/crypt"
 	"ehang.io/nps/lib/file"
 	"ehang.io/nps/server/proxy"
 	"github.com/astaxie/beego/logs"
@@ -28,7 +28,7 @@ var (
 	p2pNetBridge  *p2pBridge
 	lock          sync.RWMutex
 	udpConnStatus bool
-	connStatus    bool
+	connStatus    string
 )
 
 type p2pBridge struct {
@@ -117,11 +117,16 @@ func StartLocalServer(l *config.LocalServer, config *config.CommonConfig) error 
 		logs.Info("successful start-up of local tcp monitoring, port", l.Port)
 		conn.Accept(listener, func(c net.Conn) {
 			logs.Trace("new %s connection", l.Type)
-			if l.Type == "secret" {
-				handleSecret(c, config, l)
-			} else if l.Type == "p2p" {
-				handleP2PVisitor(c, config, l)
+			// 进行局域网
+			if err = handleRemoteLocalAddr(c, config, l); err != nil {
+				logs.Info("LAN connect error %s", err.Error())
+				if l.Type == "secret" {
+					handleSecret(c, config, l)
+				} else if l.Type == "p2p" {
+					handleP2PVisitor(c, config, l)
+				}
 			}
+			logs.Info("now connect Type ->>>>>>:", l.ConnStatus)
 		})
 	}
 	return nil
@@ -141,16 +146,28 @@ func handleUdpMonitor(config *config.CommonConfig, l *config.LocalServer) {
 					return
 				}
 				for i := 0; i < 10; i++ {
-					logs.Notice("try to connect to the server", i+1)
+					logs.Notice("try to connect to the server after 10s ", i+1)
 					newUdpConn(tmpConn.LocalAddr().String(), config, l)
 					if udpConn != nil {
 						udpConnStatus = true
 						break
 					}
+					time.Sleep(time.Duration(10) * time.Second)
 				}
 			}
 		}
 	}
+}
+
+func handleRemoteLocalAddr(localTcpConn net.Conn, config *config.CommonConfig, l *config.LocalServer) (err error) {
+	tmpConn, err := common.GetLocalUdpAddr()
+	if err != nil {
+		logs.Error(err)
+		return
+	}
+	l.ConnStatus = "LAN"
+	err = newRemoteLocalConn(localTcpConn, tmpConn.LocalAddr().String(), config, l)
+	return
 }
 
 func handleSecret(localTcpConn net.Conn, config *config.CommonConfig, l *config.LocalServer) {
@@ -159,7 +176,8 @@ func handleSecret(localTcpConn net.Conn, config *config.CommonConfig, l *config.
 		logs.Error("Local connection server failed ", err.Error())
 		return
 	}
-	if _, err := remoteConn.Write([]byte(crypt.Md5(l.Password))); err != nil {
+	// common.WORK_SECRET 单纯校验MD5
+	if err := remoteConn.WriteLenContent([]byte(crypt.Md5(l.Password[0 : len(l.Password)-4]))); err != nil {
 		logs.Error("Local connection server failed ", err.Error())
 		return
 	}
@@ -196,7 +214,8 @@ func newUdpConn(localAddr string, config *config.CommonConfig, l *config.LocalSe
 		logs.Error("Local connection server failed ", err.Error())
 		return
 	}
-	if _, err := remoteConn.Write([]byte(crypt.Md5(l.Password))); err != nil {
+	// common.WORK_P2P 因预创建，需要对称加密
+	if err := remoteConn.WriteLenContent([]byte(common.GetAesEnVerifyval(l.Password))); err != nil {
 		logs.Error("Local connection server failed ", err.Error())
 		return
 	}
@@ -206,9 +225,13 @@ func newUdpConn(localAddr string, config *config.CommonConfig, l *config.LocalSe
 		logs.Error(err)
 		return
 	}
+	if strings.HasPrefix(string(rAddr), "{[checked]}") {
+		logs.Error(string(rAddr))
+		return
+	}
 	var localConn net.PacketConn
 	var remoteAddress string
-	if remoteAddress, localConn, err = handleP2PUdp(localAddr, string(rAddr), crypt.Md5(l.Password), common.WORK_P2P_VISITOR); err != nil {
+	if remoteAddress, localConn, err = handleP2PUdp(localAddr, string(rAddr), common.GetAesEnVerifyval(l.Password), common.WORK_P2P_VISITOR); err != nil {
 		logs.Error(err)
 		return
 	}
@@ -260,4 +283,12 @@ func newRemoteLocalConn(localTcpConn net.Conn, localAddr string, config *config.
 	}
 	conn.CopyWaitGroup(remoteLocalConn.Conn, localTcpConn, false, false, nil, nil, false, nil)
 	return
+}
+
+func UdpConnStatus() bool {
+	return udpConnStatus
+}
+
+func ConnStatus() string {
+	return connStatus
 }
