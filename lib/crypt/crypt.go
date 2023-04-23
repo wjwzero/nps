@@ -7,7 +7,9 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -73,4 +75,33 @@ func GetRandomString(l int) string {
 		result = append(result, bytes[r.Intn(len(bytes))])
 	}
 	return string(result)
+}
+
+var signKey = "23ssd33"
+
+// VkeyEncodingSign 加延 32-bit MD5 前4位
+func VkeyEncodingSign(vKey string) (res string) {
+	res = fmt.Sprintf("%s%s", vKey, Md5(vKey + signKey)[0:4])
+	return
+}
+
+// VerifySign 加延 32-bit MD5 前4位 验证 并返回源数据
+func VerifySign(vKeySign string) (res string, err error) {
+	origenVkey := vKeySign[0 : len(vKeySign)-4]
+	trueVkeySign := VkeyEncodingSign(origenVkey)
+	if vKeySign == trueVkeySign {
+		return origenVkey, nil
+	} else {
+		return "", errors.New("sign error")
+	}
+}
+
+func CreateSign(paramArr []string) (sign string) {
+	return createSign(paramArr, signKey)
+}
+
+func createSign(paramArr []string, signKey string) (sign string) {
+	paramStr := strings.Join(paramArr, "")
+	all := paramStr + signKey
+	return Md5(all)
 }
