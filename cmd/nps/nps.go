@@ -35,7 +35,6 @@ var (
 
 func main() {
 	flag.Parse()
-	debug.SetMaxThreads(40000)
 	// init log
 	if *ver {
 		common.PrintVersion()
@@ -52,6 +51,7 @@ func main() {
 	if errThreads == nil {
 		debug.SetMaxThreads(maxThreads)
 	}
+
 	logs.Reset()
 	logs.EnableFuncCallDepth(true)
 	logs.SetLogFuncCallDepth(3)
