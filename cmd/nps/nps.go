@@ -72,7 +72,7 @@ func main() {
 	}
 	svcConfig.Arguments = append(svcConfig.Arguments, "service")
 	if len(os.Args) > 1 && os.Args[1] == "service" {
-		_ = logs.SetLogger(logs.AdapterFile, `{"level":`+level+`,"filename":"`+logPath+`","daily":false,"maxlines":100000,"color":true}`)
+		_ = logs.SetLogger(logs.AdapterFile, `{"level":`+level+`,"filename":"`+logPath+`","daily":true,"MaxDays":15,"MaxSize":10485760,"maxlines":1000000,"color":true}`)
 	} else {
 		_ = logs.SetLogger(logs.AdapterConsole, `{"level":`+level+`,"color":true}`)
 	}
