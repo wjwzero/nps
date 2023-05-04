@@ -160,13 +160,13 @@ func handleUdpMonitor(config *config.CommonConfig, l *config.LocalServer) {
 }
 
 func handleRemoteLocalAddr(localTcpConn net.Conn, config *config.CommonConfig, l *config.LocalServer) (err error) {
-	tmpConn, err := common.GetLocalUdpAddr()
+	err, localIp := common.GetIntranetIp()
 	if err != nil {
 		logs.Error(err)
 		return
 	}
 	l.ConnStatus = "LAN"
-	err = newRemoteLocalConn(localTcpConn, tmpConn.LocalAddr().String(), config, l)
+	err = newRemoteLocalConn(localTcpConn, localIp, config, l)
 	return
 }
 
