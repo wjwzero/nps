@@ -17,7 +17,7 @@ const (
 	WORK_P2P_SUCCESS  = "p2ps"
 	WORK_P2P_END      = "p2pe"
 	WORK_P2P_LAST     = "p2pl"
-	WORK_LEN          = "len"
+	WORK_LAN          = "lan"
 	WORK_STATUS       = "stus"
 	RES_MSG           = "msg0"
 	RES_CLOSE         = "clse"
@@ -36,4 +36,9 @@ WWW-Authenticate: Basic realm="easyProxy"
 	ConnectionFailBytes = `HTTP/1.1 404 Not Found
 
 `
+	DEFULT_TUNNEL_TYPE = "LAN,P2P,Relay"
+
+	LAN_TUNNEL_TYPE   = "LAN"
+	P2P_TUNNEL_TYPE   = "P2P"
+	RELAY_TUNNEL_TYPE = "Relay"
 )
