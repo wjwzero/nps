@@ -184,7 +184,7 @@ func StopServer(id int) error {
 //add task
 func AddTask(t *file.Tunnel) error {
 	if t.Mode == "secret" || t.Mode == "p2p" {
-		logs.Info("secret task %s start ", t.Remark)
+		logs.Info("secret task %s start id %d", t.Remark, t.Id)
 		//RunList[t.Id] = nil
 		RunList.Store(t.Id, nil)
 		return nil
@@ -457,4 +457,10 @@ func flowSession(m time.Duration) {
 			file.GetDb().JsonDb.StoreClientsToJsonFile()
 		}
 	}
+}
+
+//get tunnel list
+func GetTunnelList() (list []*file.TunnelTypesProductRelation, cnt int) {
+	list, cnt = file.GetDb().GetTunnelList()
+	return
 }
