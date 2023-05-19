@@ -2,11 +2,14 @@ package common
 
 import (
 	"bytes"
+	"ehang.io/nps/lib/crypt"
 	"ehang.io/nps/lib/version"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/logs"
 	"html/template"
 	"io"
 	"io/ioutil"
@@ -17,8 +20,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	"ehang.io/nps/lib/crypt"
 )
 
 //Get the corresponding IP address through domain name
@@ -99,7 +100,7 @@ func Getverifyval(vkey string) string {
 	return crypt.Md5(vkey)
 }
 
-var key = "sssxxaazzz"
+var key = "sienllisealiksdf"
 
 //Get AES En verify value
 func GetAesEnVerifyval(vkey string) string {
@@ -478,4 +479,13 @@ func GetServerIpByClientIp(clientIp net.IP) string {
 
 func PrintVersion() {
 	fmt.Printf("Version: %s\nCore version: %s\nSame core version of client and server can connect each other\n", version.VERSION, version.GetVersion())
+}
+
+func GetRateFlag() (reteFlag bool) {
+	var err error
+	if reteFlag, err = beego.AppConfig.Bool("allow_rate_limit"); err != nil {
+		logs.Error("获取 配置 allow_rate_limit 异常 ", err.Error())
+		return false
+	}
+	return reteFlag
 }
