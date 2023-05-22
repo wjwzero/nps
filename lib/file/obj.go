@@ -49,7 +49,9 @@ type Client struct {
 	WebUserName     string     //the username of web login
 	WebPassword     string     //the password of web login
 	ConfigConnAllow bool       //is allow connected by config file
-	MaxTunnelNum    int
+	MaxTunnelNum    int        //
+	DeviceKey       string     //device key
+	ProductKey      string     //product key
 	Version         string
 	sync.RWMutex
 }
@@ -100,6 +102,19 @@ func (s *Client) HasTunnel(t *Tunnel) (exist bool) {
 	return
 }
 
+func (s *Client) GetTunnel(clientId int) (tunnel *Tunnel, exist bool) {
+	GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
+		v := value.(*Tunnel)
+		if v.Client.Id == clientId {
+			tunnel = v
+			exist = true
+			return false
+		}
+		return true
+	})
+	return
+}
+
 func (s *Client) GetTunnelNum() (num int) {
 	GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
 		v := value.(*Tunnel)
@@ -140,6 +155,7 @@ type Tunnel struct {
 	NoStore      bool
 	LocalPath    string
 	StripPre     string
+	Account      string
 	Target       *Target
 	MultiAccount *MultiAccount
 	Health
@@ -184,6 +200,16 @@ type Target struct {
 	TargetArr  []string
 	LocalProxy bool
 	sync.RWMutex
+}
+
+type TunnelTypesProductRelation struct {
+	ProductKey  string
+	TunnelTypes string
+}
+
+type DynamicConfig struct {
+	Key   string
+	Value string
 }
 
 type MultiAccount struct {
