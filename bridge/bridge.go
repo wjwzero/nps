@@ -2,6 +2,8 @@ package bridge
 
 import (
 	"ehang.io/nps-mux"
+	"ehang.io/nps/lib/cloud"
+	preclient "ehang.io/nps/lib/precreate"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -159,12 +161,17 @@ func (s *Bridge) verifyError(c *conn.Conn) {
 	c.Write([]byte(common.VERIFY_EER))
 }
 
+//验证失败，返回错误验证flag，并且关闭连接
+func (s *Bridge) verifyCloudError(c *conn.Conn, msg string) {
+	c.WriteLenContent([]byte(msg))
+}
+
 func (s *Bridge) verifySuccess(c *conn.Conn) {
 	c.Write([]byte(common.VERIFY_SUCCESS))
 }
 
 func (s *Bridge) cliProcess(c *conn.Conn) {
-	//read test flag
+	//read test_device_client flag
 	if _, err := c.GetShortContent(3); err != nil {
 		logs.Info("The client %s connect error", c.Conn.RemoteAddr(), err.Error())
 		return
@@ -188,23 +195,51 @@ func (s *Bridge) cliProcess(c *conn.Conn) {
 	c.SetReadDeadlineBySecond(5)
 	var buf []byte
 	//get vKey from client
-	if buf, err = c.GetShortContent(32); err != nil {
+	if buf, err = c.GetShortLenContent(); err != nil {
 		c.Close()
 		return
 	}
 	//verify
-	id, err := file.GetDb().GetIdByVerifyKey(string(buf), c.Conn.RemoteAddr().String())
-	if err != nil {
-		logs.Info("Current client connection validation error, close this client:", c.Conn.RemoteAddr())
+	aesVkey := string(buf)
+	vKeySign := common.GetAesDnVerifyval(aesVkey)
+	//sign verify
+	vKey, verifySignErr := crypt.VerifySign(vKeySign)
+	if verifySignErr != nil {
+		logs.Info("verify Vkey Sign (%s) error %s", vKeySign, verifySignErr)
 		s.verifyError(c)
 		return
+	}
+	// 本地没有客户端，去云平台验证vKey 是否正确 正确则创建  用于集群情况
+	id, err := file.GetDb().GetIdByVerifyKey(vKey, c.Conn.RemoteAddr().String())
+	if err != nil {
+		/*logs.Info("Current client connection validation error, close this client:", c.Conn.RemoteAddr())
+		s.verifyError(c)
+		return*/
+		logs.Info("当前服务中未找到vkey: %s, 开始验证云平台是否可以找到", vKey)
+		cloudAddr := beego.AppConfig.String("cloudAddr")
+		key, pk, errCloud := cloud.CheckDeviceKey(cloudAddr, vKey)
+		if errCloud != nil || key == false {
+			logs.Warn("vKey: %s 当前服务中未找到， 云平台中也不存在此数据", vKey)
+			s.verifyError(c)
+			return
+		}
+		logs.Info("vKey: %s 当前服务中未找到， 云平台中存在此数据", vKey)
+		var preClientId int
+		var preCreatErr error
+		if preClientId, preCreatErr = file.GetDb().PreCreateVerifyKeyClient(vKey, pk); preCreatErr != nil {
+			logs.Info("previous create client error, close this client:", c.Conn.RemoteAddr(), preCreatErr)
+			s.verifyError(c)
+			return
+		}
+		id = preClientId
+		s.verifySuccess(c)
 	} else {
 		s.verifySuccess(c)
 	}
-	if flag, err := c.ReadFlag(); err == nil {
-		s.typeDeal(flag, c, id, string(vs))
+	if flag, errReadFlag := c.ReadFlag(); errReadFlag == nil {
+		s.typeDeal(flag, c, id, string(vs), vKey)
 	} else {
-		logs.Warn(err, flag)
+		logs.Warn(errReadFlag, flag)
 	}
 	return
 }
@@ -225,7 +260,7 @@ func (s *Bridge) DelClient(id int) {
 }
 
 //use different
-func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string) {
+func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey string) {
 	isPub := file.GetDb().IsPubClient(id)
 	switch typeVal {
 	case common.WORK_MAIN:
@@ -265,7 +300,7 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string) {
 	case common.WORK_REGISTER:
 		go s.register(c)
 	case common.WORK_SECRET:
-		if b, err := c.GetShortContent(32); err == nil {
+		if b, err := c.GetShortLenContent(); err == nil {
 			s.SecretChan <- conn.NewSecret(string(b), c)
 		} else {
 			logs.Error("secret error, failed to match the key successfully")
@@ -277,10 +312,52 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string) {
 		}
 	case common.WORK_P2P:
 		//read md5 secret
-		if b, err := c.GetShortContent(32); err != nil {
+		b, err := c.GetShortLenContent()
+		if err != nil {
 			logs.Error("p2p error,", err.Error())
-		} else if t := file.GetDb().GetTaskByMd5Password(string(b)); t == nil {
-			logs.Error("p2p error, failed to match the key successfully")
+			return
+		}
+		passwordSign := common.GetAesDnVerifyval(string(b))
+		password, verifySignErr := crypt.VerifySign(passwordSign)
+		if verifySignErr != nil {
+			logs.Info("verify password Sign (%s) error %s", passwordSign, verifySignErr)
+			s.verifyCloudError(c, "{[checked]} password sign error")
+			return
+		}
+		if t := file.GetDb().GetTaskByPassword(password); t == nil {
+			// logs.Error("p2p error, failed to match the key successfully")
+			// 本地没有客户端，去云平台验证password 是否正确 正确则创建  用于集群情况
+			logs.Info("本地未找到password信息，去云平台查找")
+			cloudAddr := beego.AppConfig.String("cloudAddr")
+			key, err := cloud.CheckPassword(cloudAddr, vKey, password)
+			if err != nil || key == false {
+				logs.Warn("password: %s 当前服务中未找到， 云平台中也不存在此数据", password)
+				s.verifyCloudError(c, "{[checked]} password error")
+				return
+			}
+			logs.Info("password: %s 当前服务中未找到， 云平台中存在此数据", password)
+			// 预创建数据，并发送地址
+			_, errC := preclient.P2pClient(id, vKey, password)
+			if errC != nil {
+				logs.Error("预创建password 对应的数据失败 %s", errC)
+				s.verifyCloudError(c, "{[checked]}password pre create error")
+				return
+			}
+			if v, ok := s.Client.Load(id); !ok {
+				return
+			} else {
+				//向密钥对应的客户端发送与服务端udp建立连接信息，地址，密钥
+				v.(*Client).signal.Write([]byte(common.NEW_UDP_CONN))
+				svrAddr := beego.AppConfig.String("p2p_ip") + ":" + beego.AppConfig.String("p2p_port")
+				if err != nil {
+					logs.Warn("get local udp addr error")
+					return
+				}
+				v.(*Client).signal.WriteLenContent([]byte(svrAddr))
+				v.(*Client).signal.WriteLenContent(b)
+				//向该请求者发送建立连接请求,服务器地址
+				c.WriteLenContent([]byte(svrAddr))
+			}
 		} else {
 			if v, ok := s.Client.Load(t.Client.Id); !ok {
 				return
@@ -297,6 +374,105 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string) {
 				//向该请求者发送建立连接请求,服务器地址
 				c.WriteLenContent([]byte(svrAddr))
 			}
+		}
+	case common.WORK_LAN:
+		//read md5 secret
+		b, err := c.GetShortLenContent()
+		if err != nil {
+			logs.Error("p2p error,", err.Error())
+			return
+		}
+		passwordSign := common.GetAesDnVerifyval(string(b))
+		password, verifySignErr := crypt.VerifySign(passwordSign)
+		if verifySignErr != nil {
+			logs.Info("verify password Sign (%s) error %s", passwordSign, verifySignErr)
+			s.verifyCloudError(c, "{[checked]} password sign error")
+			return
+		}
+		if t := file.GetDb().GetTaskByPassword(password); t == nil {
+			// logs.Error("p2p error, failed to match the key successfully")
+			// 本地没有客户端，去云平台验证password 是否正确 正确则创建  用于集群情况
+			logs.Info("本地未找到password信息，去云平台查找")
+			cloudAddr := beego.AppConfig.String("cloudAddr")
+			key, err := cloud.CheckPassword(cloudAddr, vKey, password)
+			if err != nil || key == false {
+				logs.Warn("password: %s 当前服务中未找到， 云平台中也不存在此数据", password)
+				s.verifyCloudError(c, "{[checked]} password error")
+				return
+			}
+			logs.Info("password: %s 当前服务中未找到， 云平台中存在此数据", password)
+			// 预创建数据，并发送地址
+			_, errC := preclient.P2pClient(id, vKey, password)
+			if errC != nil {
+				logs.Error("预创建password 对应的数据失败 %s", errC)
+				s.verifyCloudError(c, "{[checked]}password pre create error")
+				return
+			}
+			if v, ok := s.Client.Load(id); !ok {
+				logs.Warn("id %s 当前未进行连接", id)
+				c.WriteLenContent([]byte("{[checked]} device offline"))
+				return
+			} else {
+				//向密钥对应的客户端发送与服务端udp建立连接信息，地址，密钥
+				v.(*Client).signal.Write([]byte(common.NEW_UDP_CONN))
+				svrAddr := beego.AppConfig.String("p2p_ip") + ":" + beego.AppConfig.String("p2p_port")
+				if err != nil {
+					logs.Warn("get local udp addr error")
+					return
+				}
+				v.(*Client).signal.WriteLenContent([]byte(svrAddr))
+				v.(*Client).signal.WriteLenContent(b)
+				//向该请求者发送建立连接请求,服务器地址
+				c.WriteLenContent([]byte(svrAddr))
+			}
+			//发送产品Key
+			var tunnelTypesStr = common.DEFULT_TUNNEL_TYPE
+			if pk := t.Client.ProductKey; pk != "" {
+				if tunnelTypes, errT := file.GetDb().GetTunnelType(pk); errT != nil {
+					logs.Warn(fmt.Sprintf("未获取到产品 %s 对应的隧道配置, 使用默认配置 %s,并初始化；err： %s", t.Client.ProductKey, tunnelTypesStr, errT))
+					t := &file.TunnelTypesProductRelation{
+						ProductKey:  pk,
+						TunnelTypes: common.DEFULT_TUNNEL_TYPE,
+					}
+					file.GetDb().NewTunnelType(t)
+				} else {
+					tunnelTypesStr = tunnelTypes.TunnelTypes
+				}
+			}
+			c.WriteLenContent([]byte(tunnelTypesStr))
+		} else {
+			if v, ok := s.Client.Load(t.Client.Id); !ok {
+				logs.Warn("id %s 当前未进行连接", id)
+				c.WriteLenContent([]byte("{[checked]} device offline"))
+				return
+			} else {
+				//向密钥对应的客户端发送与服务端udp建立连接信息，地址，密钥
+				v.(*Client).signal.Write([]byte(common.NEW_UDP_CONN))
+				svrAddr := beego.AppConfig.String("p2p_ip") + ":" + beego.AppConfig.String("p2p_port")
+				if err != nil {
+					logs.Warn("get local udp addr error")
+					return
+				}
+				v.(*Client).signal.WriteLenContent([]byte(svrAddr))
+				v.(*Client).signal.WriteLenContent(b)
+				//向该请求者发送建立连接请求,服务器地址
+				c.WriteLenContent([]byte(svrAddr))
+			}
+			//发送产品Key
+			var tunnelTypesStr = common.DEFULT_TUNNEL_TYPE
+			if pk := t.Client.ProductKey; pk != "" {
+				if tunnelTypes, errT := file.GetDb().GetTunnelType(pk); errT != nil {
+					logs.Warn(fmt.Sprintf("未获取到产品 %s 对应的隧道配置, 使用默认配置 %s,并初始化；err： %s", t.Client.ProductKey, tunnelTypesStr, errT))
+					t := &file.TunnelTypesProductRelation{
+						ProductKey:  pk,
+						TunnelTypes: common.DEFULT_TUNNEL_TYPE,
+					}
+					file.GetDb().NewTunnelType(t)
+				} else {
+					tunnelTypesStr = tunnelTypes.TunnelTypes
+				}
+			}
+			c.WriteLenContent([]byte(tunnelTypesStr))
 		}
 	}
 	c.SetAlive(s.tunnelType)
