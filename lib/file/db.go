@@ -3,6 +3,7 @@ package file
 import (
 	"errors"
 	"fmt"
+	"github.com/astaxie/beego/logs"
 	"net/http"
 	"sort"
 	"strings"
@@ -26,9 +27,12 @@ var (
 func GetDb() *DbUtils {
 	once.Do(func() {
 		jsonDb := NewJsonDb(common.GetRunPath())
+		// 配置优先加载
+		jsonDb.LoadDynamicConfigFromJsonFile()
 		jsonDb.LoadClientFromJsonFile()
 		jsonDb.LoadTaskFromJsonFile()
 		jsonDb.LoadHostFromJsonFile()
+		jsonDb.LoadTunnelTypesProductRelationFromJsonFile()
 		Db = &DbUtils{JsonDb: jsonDb}
 	})
 	return Db
@@ -77,7 +81,7 @@ func (s *DbUtils) GetIdByVerifyKey(vKey string, addr string) (id int, err error)
 	var exist bool
 	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
 		v := value.(*Client)
-		if common.Getverifyval(v.VerifyKey) == vKey && v.Status {
+		if v.VerifyKey == vKey && v.Status {
 			v.Addr = common.GetIpByAddr(addr)
 			id = v.Id
 			exist = true
@@ -109,6 +113,22 @@ func (s *DbUtils) NewTask(t *Tunnel) (err error) {
 	return
 }
 
+// 根据password 删除Task
+func (s *DbUtils) DelTaskByPassword(password string) (err error) {
+	var taskId int
+	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+		v := value.(*Tunnel)
+		if v.Password == password {
+			taskId = v.Id
+			return false
+		}
+		return true
+	})
+	s.JsonDb.Tasks.Delete(taskId)
+	s.JsonDb.StoreTasksToJsonFile()
+	return
+}
+
 func (s *DbUtils) UpdateTask(t *Tunnel) error {
 	s.JsonDb.Tasks.Store(t.Id, t)
 	s.JsonDb.StoreTasksToJsonFile()
@@ -125,6 +145,17 @@ func (s *DbUtils) DelTask(id int) error {
 func (s *DbUtils) GetTaskByMd5Password(p string) (t *Tunnel) {
 	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
 		if crypt.Md5(value.(*Tunnel).Password) == p {
+			t = value.(*Tunnel)
+			return false
+		}
+		return true
+	})
+	return
+}
+
+func (s *DbUtils) GetTaskByPassword(p string) (t *Tunnel) {
+	s.JsonDb.Tasks.Range(func(key, value interface{}) bool {
+		if value.(*Tunnel).Password == p {
 			t = value.(*Tunnel)
 			return false
 		}
@@ -214,7 +245,12 @@ reset:
 		c.VerifyKey = crypt.GetRandomString(16)
 	}
 	if c.RateLimit == 0 {
-		c.Rate = rate.NewRate(int64(2 << 23))
+		var rateMaxErr error
+		var rateLimit int64
+		if rateLimit, rateMaxErr = s.JsonDb.GetCommonRateLimitMax(); rateMaxErr != nil {
+			logs.Error("获取动态配置失败 GetCommonRateLimitMax 默认 %s kb", rateLimit, rateMaxErr.Error())
+		}
+		c.Rate = rate.NewRate(int64(rateLimit * 1024))
 	} else if c.Rate == nil {
 		c.Rate = rate.NewRate(int64(c.RateLimit * 1024))
 	}
@@ -265,7 +301,12 @@ func (s *DbUtils) VerifyUserName(username string, id int) (res bool) {
 func (s *DbUtils) UpdateClient(t *Client) error {
 	s.JsonDb.Clients.Store(t.Id, t)
 	if t.RateLimit == 0 {
-		t.Rate = rate.NewRate(int64(2 << 23))
+		var rateMaxErr error
+		var rateLimit int64
+		if rateLimit, rateMaxErr = s.JsonDb.GetCommonRateLimitMax(); rateMaxErr != nil {
+			logs.Error("获取动态配置失败 GetCommonRateLimitMax 默认 %s kb", rateLimit, rateMaxErr.Error())
+		}
+		t.Rate = rate.NewRate(int64(rateLimit * 1024))
 		t.Rate.Start()
 	}
 	return nil
@@ -303,6 +344,23 @@ func (s *DbUtils) GetClientIdByVkey(vkey string) (id int, err error) {
 		return
 	}
 	err = errors.New("未找到客户端")
+	return
+}
+
+func (s *DbUtils) GetClientByDeviceKey(deviceKey string) (client *Client) {
+	var exist bool
+	s.JsonDb.Clients.Range(func(key, value interface{}) bool {
+		clientObj := value.(*Client)
+		if clientObj.DeviceKey == deviceKey {
+			exist = true
+			client = clientObj
+			return false
+		}
+		return true
+	})
+	if exist {
+		return
+	}
 	return
 }
 
@@ -358,4 +416,104 @@ func (s *DbUtils) GetInfoByHost(host string, r *http.Request) (h *Host, err erro
 	}
 	err = errors.New("The host could not be parsed")
 	return
+}
+
+func (s *DbUtils) PreCreateVerifyKeyClient(verifyKey string, productKey string) (id int, err error) {
+	clientId := int(s.JsonDb.GetClientId())
+	t := &Client{
+		VerifyKey: verifyKey,
+		Id:        clientId,
+		Status:    true,
+		Remark:    verifyKey,
+		Cnf: &Config{
+			U:        "",
+			P:        "",
+			Compress: false,
+			Crypt:    false,
+		},
+		ConfigConnAllow: true,
+		RateLimit:       0,
+		MaxConn:         0,
+		WebUserName:     "",
+		WebPassword:     "",
+		MaxTunnelNum:    0,
+		Flow: &Flow{
+			ExportFlow: 0,
+			InletFlow:  0,
+			FlowLimit:  0,
+		},
+		DeviceKey:  verifyKey,
+		ProductKey: productKey,
+	}
+	if err := s.NewClient(t); err != nil {
+		err = errors.New("创建verifyKey Client失败")
+	}
+	return
+}
+
+func (s *DbUtils) GetTunnelType(productKey string) (tunnelType *TunnelTypesProductRelation, err error) {
+	if v, ok := s.JsonDb.TunnelTypes.Load(productKey); ok {
+		tunnelType = v.(*TunnelTypesProductRelation)
+		return
+	} else {
+		return nil, errors.New(fmt.Sprintf("未获取到 %s 对应tunnelTypes", productKey))
+	}
+}
+
+func (s *DbUtils) GetTunnelList() ([]*TunnelTypesProductRelation, int) {
+	var cnt int
+	list := make([]*TunnelTypesProductRelation, 0)
+	s.JsonDb.TunnelTypes.Range(func(key, value interface{}) bool {
+		tempTunnel := value.(*TunnelTypesProductRelation)
+		list = append(list, tempTunnel)
+		cnt++
+		return true
+	})
+	return list, cnt
+}
+
+func (s *DbUtils) NewTunnelType(t *TunnelTypesProductRelation) error {
+	s.JsonDb.TunnelTypes.Store(t.ProductKey, t)
+	s.JsonDb.StoreTunnelTypeToJsonFile()
+	return nil
+}
+
+func (s *DbUtils) DelTunnelType(pk string) error {
+	s.JsonDb.TunnelTypes.Delete(pk)
+	s.JsonDb.StoreTunnelTypeToJsonFile()
+	return nil
+}
+
+func (s *DbUtils) NewDynamicConfig(t *DynamicConfig) error {
+	s.JsonDb.DynamicConfig.Store(t.Key, t)
+	s.JsonDb.StoreTunnelTypeToJsonFile()
+	return nil
+}
+
+func (s *DbUtils) GetConfig(key string) (tunnelType *DynamicConfig, err error) {
+	if v, ok := s.JsonDb.DynamicConfig.Load(key); ok {
+		tunnelType = v.(*DynamicConfig)
+		return
+	} else {
+		return nil, errors.New(fmt.Sprintf("未获取到 %s 对应DynamicConfig", key))
+	}
+}
+
+func (s *DbUtils) GetDynamicConfigList() ([]*DynamicConfig, int) {
+	var cnt int
+	list := make([]*DynamicConfig, 0)
+	s.JsonDb.DynamicConfig.Range(func(key, value interface{}) bool {
+		dynamicConfig := value.(*DynamicConfig)
+		list = append(list, dynamicConfig)
+		cnt++
+		return true
+	})
+	return list, cnt
+}
+
+func (s *DbUtils) UpdateDynamicConfig(t *DynamicConfig) error {
+	s.JsonDb.DynamicConfig.Store(t.Key, t)
+	s.JsonDb.StoreDynamicConfigToJsonFile()
+	logs.Info("=============更新 动态配置 Key:%s, Value:%s =================", t.Key, t.Value)
+	return nil
 }
