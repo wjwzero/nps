@@ -256,7 +256,7 @@ func NewConn(tp string, vkey string, server string, connType string, proxyUrl st
 func NewRemoteLocalConn(server string) (*conn.Conn, error) {
 	var err error
 	var connection net.Conn
-	connection, err = net.Dial("tcp", server)
+	connection, err = net.DialTimeout("tcp", server, 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -423,19 +423,19 @@ func handleRemoteLocalTcp(localAddr, rAddr, md5Password, role string, targetPort
 	return
 }
 
-var TIMEOUT = 300 * time.Millisecond // 设置连接超时时间
+var TIMEOUT = 800 * time.Millisecond // 设置连接超时时间
 func sendTcpTestMsg(localConn *net.UDPConn, remoteAddr1, remoteAddr2, remoteAddr3 string, targetPort string) (remoteAddr string, err error) {
 	logs.Trace(remoteAddr3, remoteAddr2, remoteAddr1)
 	arr := strings.Split(remoteAddr1, ":")
 	defer localConn.Close()
 	var tcpConn net.Conn
-	tcpConn, err = net.DialTimeout("tcp", arr[0]+":"+targetPort, TIMEOUT)
+	remoteAddr = arr[0] + ":" + targetPort
+	tcpConn, err = net.DialTimeout("tcp", remoteAddr, TIMEOUT)
 	if err != nil {
 		err = errors.New("LAN Error connect to the target failed, maybe the not in LAN ....." + err.Error())
 		return
 	}
 	defer tcpConn.Close()
-	remoteAddr = remoteAddr1
 	return
 }
 
