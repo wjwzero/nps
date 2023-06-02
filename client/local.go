@@ -292,3 +292,44 @@ func UdpConnStatus() bool {
 func ConnStatus() string {
 	return connStatus
 }
+
+func GetLanAddr(l *config.LocalServer, config *config.CommonConfig) (localIp string, err error) {
+	tmpConn, err := common.GetLocalUdpAddr()
+	if err != nil {
+		logs.Error(err)
+		return
+	}
+	localAddr := tmpConn.LocalAddr().String()
+	var remoteConn *conn.Conn
+	remoteConn, err = NewConn(config.Tp, config.VKey, config.Server, common.WORK_LAN, config.ProxyUrl)
+	if err != nil {
+		logs.Error("Local connection server failed ", err.Error())
+		return
+	}
+	// common.WORK_P2P 因预创建，需要对称加密
+	if err = remoteConn.WriteLenContent([]byte(common.GetAesEnVerifyval(l.Password))); err != nil {
+		logs.Error("Local connection server failed ", err.Error())
+		return
+	}
+	var rAddr []byte
+	//读取服务端地址、密钥 继续做处理
+	if rAddr, err = remoteConn.GetShortLenContent(); err != nil {
+		logs.Error(err)
+		return
+	}
+	if strings.HasPrefix(string(rAddr), "{[checked]}") {
+		logs.Error(string(rAddr))
+		err = errors.New("device offline")
+		return
+	}
+	if localIp, err = handleRemoteLocalTcp(localAddr, string(rAddr), common.GetAesEnVerifyval(l.Password), common.WORK_P2P_VISITOR, l.Target); err != nil {
+		logs.Error(err)
+		return
+	}
+	logs.Info("局域网 Remote Local connection server ", localIp)
+	if err != nil {
+		logs.Error("Local connection server failed ", err.Error())
+		return
+	}
+	return
+}
