@@ -32,7 +32,8 @@ func InitDb() {
 	if isShowSql, errs := beego.AppConfig.Bool("db_is_show_sql"); errs == nil {
 		DbEngine.ShowSQL(isShowSql)
 	}
-	DbEngine.SetMaxOpenConns(2)
+	DbEngine.SetMaxOpenConns(30)
+	DbEngine.SetMaxIdleConns(5)
 
 	logs.Info("init %s database ok", driverName)
 }
