@@ -7,7 +7,6 @@ import (
 	. "ehang.io/nps/models"
 	"errors"
 	"github.com/astaxie/beego/logs"
-	"log"
 	"sync"
 )
 
@@ -15,31 +14,30 @@ type ClientDao struct {
 	Clients sync.Map
 }
 
-var client_cols = []string{"nps_client_info.id", "verify_key", "addr", "basic_auth_user", "basic_auth_pass", "device_key", "version", "status", "remark", "is_connect", "is_config_conn_allow", "is_compress", "is_crypt", "no_display", "no_store", "max_channel_num", "max_connect_num", "rate_limit", "flow_limit", "web_user", "web_pass", "nps_client_info.create_time", "nps_client_info.update_time"}
-var clientUpdateCols = []string{"verify_key", "remark", "basic_auth_user", "basic_auth_pass", "is_config_conn_allow", "is_compress", "is_crypt"}
+var client_cols = []string{"nps_client_info.id", "verify_key", "addr", "basic_auth_user", "basic_auth_pass", "device_key", "version", "status", "product_key", "remark", "is_connect", "is_config_conn_allow", "is_compress", "is_crypt", "no_display", "no_store", "max_channel_num", "max_connect_num", "rate_limit", "flow_limit", "web_user", "web_pass", "nps_client_info.create_time", "nps_client_info.update_time"}
+var clientUpdateCols = []string{"verify_key", "product_key", "remark", "basic_auth_user", "basic_auth_pass", "is_config_conn_allow", "is_compress", "is_crypt"}
 
-func (cd *ClientDao) LoadClientFromDb() {
-	list, num := cd.GetClientAllListInfo()
-	if num == 0 {
-		return
-	}
-	for _, v := range list {
-		if v.RateLimit > 0 {
-			v.Rate = rate.NewRate(int64(v.RateLimit * 1024))
-		} else {
-			v.Rate = rate.NewRate(int64(2 << 23))
-		}
-		v.Rate.Start()
-		v.NowConnectNum = 0
-		cd.Clients.Store(v.Id, v)
-	}
-}
+//func (cd *ClientDao) LoadClientFromDb() {
+//	list, num := cd.GetClientAllListInfo()
+//	if num == 0 {
+//		return
+//	}
+//	for _, v := range list {
+//		if v.RateLimit > 0 {
+//			v.Rate = rate.NewRate(int64(v.RateLimit * 1024))
+//		} else {
+//			v.Rate = rate.NewRate(int64(2 << 23))
+//		}
+//		v.Rate.Start()
+//		v.NowConnectNum = 0
+//		cd.Clients.Store(v.Id, v)
+//	}
+//}
 
 // query Client by id
 func (ClientDao) GetClient(id int) (*NpsClientInfo, error) {
 	cc := new(NpsClientInfo)
 	has, err := DbEngine.Where("id = ?", id).Get(cc)
-	log.Println(cc)
 	if !has {
 		err = errors.New("未找到客户端")
 		return cc, err
@@ -116,7 +114,7 @@ func (ClientDao) GetClientList(start, length int, search, sort, order string, cl
 func (ClientDao) GetClientListInfo(start, length int, search, sort, order string, clientId int) ([]*NpsClientListInfo, int) {
 	list := make([]*NpsClientListInfo, 0)
 	cnt, dbErr := DbEngine.Table("nps_client_info").
-		Select("nps_client_info.id, `verify_key`, `addr`, `basic_auth_user`, `basic_auth_pass`, `device_key`, `version`, `status`, `remark`, `is_connect`, `is_config_conn_allow`, `is_compress`, `is_crypt`, `no_display`, `no_store`, `max_channel_num`, `max_connect_num`, `rate_limit`, `flow_limit`, `web_user`, `web_pass`, `nps_client_info`.`create_time`, `nps_client_info`.`update_time`,nps_client_statistic_flow.flow_inlet,nps_client_statistic_flow.flow_export,nps_client_statistic_rate.rate_now,nps_client_statistic_connect.now_connect_num").
+		Select("nps_client_info.id, `verify_key`, `addr`, `basic_auth_user`, `basic_auth_pass`, `device_key`, `version`, `status`,`product_key`, `remark`, `is_connect`, `is_config_conn_allow`, `is_compress`, `is_crypt`, `no_display`, `no_store`, `max_channel_num`, `max_connect_num`, `rate_limit`, `flow_limit`, `web_user`, `web_pass`, `nps_client_info`.`create_time`, `nps_client_info`.`update_time`,nps_client_statistic_flow.flow_inlet,nps_client_statistic_flow.flow_export,nps_client_statistic_rate.rate_now,nps_client_statistic_connect.now_connect_num").
 		Join("INNER", "nps_client_statistic_flow", "nps_client_info.Id = nps_client_statistic_flow.client_id").
 		Join("INNER", "nps_client_statistic_rate", "nps_client_info.Id = nps_client_statistic_rate.client_id").
 		Join("INNER", "nps_client_statistic_connect", "nps_client_info.Id = nps_client_statistic_connect.client_id").
@@ -135,12 +133,11 @@ func (ClientDao) GetClientInfo(id int) (*NpsClientListInfo, error) {
 	}
 	cc := new(NpsClientListInfo)
 	has, err := DbEngine.Table("nps_client_info").
-		Select("nps_client_info.id, `verify_key`, `addr`, `basic_auth_user`, `basic_auth_pass`, `device_key`, `version`, `status`, `remark`, `is_connect`, `is_config_conn_allow`, `is_compress`, `is_crypt`, `no_display`, `no_store`, `max_channel_num`, `max_connect_num`, `rate_limit`, `flow_limit`, `web_user`, `web_pass`, `nps_client_info`.`create_time`, `nps_client_info`.`update_time`,nps_client_statistic_flow.flow_inlet,nps_client_statistic_flow.flow_export,nps_client_statistic_rate.rate_now,nps_client_statistic_connect.now_connect_num").
+		Select("nps_client_info.id, `verify_key`, `addr`, `basic_auth_user`, `basic_auth_pass`, `device_key`, `version`, `status`,`product_key`, `remark`, `is_connect`, `is_config_conn_allow`, `is_compress`, `is_crypt`, `no_display`, `no_store`, `max_channel_num`, `max_connect_num`, `rate_limit`, `flow_limit`, `web_user`, `web_pass`, `nps_client_info`.`create_time`, `nps_client_info`.`update_time`,nps_client_statistic_flow.flow_inlet,nps_client_statistic_flow.flow_export,nps_client_statistic_rate.rate_now,nps_client_statistic_connect.now_connect_num").
 		Join("INNER", "nps_client_statistic_flow", "nps_client_info.Id = nps_client_statistic_flow.client_id").
 		Join("INNER", "nps_client_statistic_rate", "nps_client_info.Id = nps_client_statistic_rate.client_id").
 		Join("INNER", "nps_client_statistic_connect", "nps_client_info.Id = nps_client_statistic_connect.client_id").
 		Where("nps_client_info.id = ?", id).Get(cc)
-	log.Println(cc)
 	if !has {
 		err = errors.New("未找到客户端")
 		return cc, err
@@ -151,7 +148,7 @@ func (ClientDao) GetClientInfo(id int) (*NpsClientListInfo, error) {
 func (ClientDao) GetClientAllListInfo() ([]*NpsClientListInfo, int) {
 	list := make([]*NpsClientListInfo, 0)
 	cnt, dbErr := DbEngine.Table("nps_client_info").
-		Select("nps_client_info.id, `verify_key`, `addr`, `basic_auth_user`, `basic_auth_pass`, `device_key`, `version`, `status`, `remark`, `is_connect`, `is_config_conn_allow`, `is_compress`, `is_crypt`, `no_display`, `no_store`, `max_channel_num`, `max_connect_num`, `rate_limit`, `flow_limit`, `web_user`, `web_pass`, `nps_client_info`.`create_time`, `nps_client_info`.`update_time`,nps_client_statistic_flow.flow_inlet,nps_client_statistic_flow.flow_export,nps_client_statistic_rate.rate_now,nps_client_statistic_connect.now_connect_num").
+		Select("nps_client_info.id, `verify_key`, `addr`, `basic_auth_user`, `basic_auth_pass`, `device_key`, `version`, `status`,`product_key`, `remark`, `is_connect`, `is_config_conn_allow`, `is_compress`, `is_crypt`, `no_display`, `no_store`, `max_channel_num`, `max_connect_num`, `rate_limit`, `flow_limit`, `web_user`, `web_pass`, `nps_client_info`.`create_time`, `nps_client_info`.`update_time`,nps_client_statistic_flow.flow_inlet,nps_client_statistic_flow.flow_export,nps_client_statistic_rate.rate_now,nps_client_statistic_connect.now_connect_num").
 		Join("INNER", "nps_client_statistic_flow", "nps_client_info.Id = nps_client_statistic_flow.client_id").
 		Join("INNER", "nps_client_statistic_rate", "nps_client_info.Id = nps_client_statistic_rate.client_id").
 		Join("INNER", "nps_client_statistic_connect", "nps_client_info.Id = nps_client_statistic_connect.client_id").
@@ -305,24 +302,26 @@ func (cd ClientDao) UpdateIsConnect(c *NpsClientInfo) error {
 	return dbErr
 }
 
-func (ClientDao) GetIdByVerifyKey(vKey string, addr string) (id int, err error) {
+func (ClientDao) GetIdByVerifyKey(vKey string, addr string) (id int, status bool, err error) {
 	c := new(NpsClientInfo)
 	has, err := DbEngine.Where("verify_key = ?", vKey).Get(c)
 	if !has {
-		err = errors.New("未找到客户端")
+		return 0, status, errors.New("not found")
 	}
+	status = c.Status
 	if c.Status {
 		c.Addr = common.GetIpByAddr(addr)
-		id = int(c.Id)
+		id = c.Id
 		return
 	}
-	return 0, errors.New("not found")
+	return
 }
 
-func (cd ClientDao) PreCreateVerifyKeyClient(verifyKey string) (id int, err error) {
+func (cd ClientDao) PreCreateVerifyKeyClient(verifyKey string, productKey string) (id int, err error) {
 	t := &NpsClientInfo{
 		VerifyKey:         verifyKey,
 		Remark:            verifyKey,
+		ProductKey:        productKey,
 		DeviceKey:         verifyKey,
 		Status:            true,
 		IsCompress:        false,
@@ -340,5 +339,48 @@ func (cd ClientDao) PreCreateVerifyKeyClient(verifyKey string) (id int, err erro
 	if err := cd.NewClient(t); err != nil {
 		err = errors.New("创建verifyKey Client失败")
 	}
+	id = t.Id
 	return
+}
+
+func (cd ClientDao) UpdateAddressOnline(id int, addr string) error {
+	c := new(NpsClientInfo)
+	c.Id = id
+	c.Addr = common.GetIpByAddr(addr)
+	c.IsConnect = true
+	_, dbErr := DbEngine.ID(c.Id).Cols("addr", "is_connect").Update(c)
+	if dbErr != nil {
+		logs.Error(dbErr)
+	}
+	return dbErr
+}
+
+func (cd ClientDao) UpdateStatusOffline(id int) error {
+	c := new(NpsClientInfo)
+	c.Id = id
+	c.IsConnect = false
+	return cd.UpdateIsConnect(c)
+}
+
+func (cd ClientDao) UpdateVersion(id int, version string) error {
+	c := new(NpsClientInfo)
+	c.Id = id
+	c.Version = version
+	_, dbErr := DbEngine.ID(c.Id).Cols("version").Update(c)
+	if dbErr != nil {
+		logs.Error(dbErr)
+	}
+	return dbErr
+}
+
+func (cd ClientDao) UpdateVersionAndIsConnect(id int, version string, isConnect bool) error {
+	c := new(NpsClientInfo)
+	c.Id = id
+	c.IsConnect = isConnect
+	c.Version = version
+	_, dbErr := DbEngine.ID(c.Id).Cols("is_connect", "version").Update(c)
+	if dbErr != nil {
+		logs.Error(dbErr)
+	}
+	return dbErr
 }
