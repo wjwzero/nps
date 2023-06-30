@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"ehang.io/nps-mux"
+	"math/rand"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,20 +55,38 @@ var CloseClient bool
 //start
 func (s *TRPClient) Start() {
 	CloseClient = false
+	var retryNum = 0
+	var retryDuration = 10
 retry:
+	retryNum++
+	if retryNum < 3 {
+		retryDuration = 100 + rand.Intn(30)
+	} else if retryNum >= 3 {
+		retryDuration = 150 + rand.Intn(30)
+	} else if retryNum >= 5 {
+		retryDuration = 300 + rand.Intn(30)
+	} else {
+		retryDuration = 9*60 + rand.Intn(60)
+	}
 	if CloseClient {
 		return
 	}
 	NowStatus = 0
 	c, err := NewConn(s.bridgeConnType, s.vKey, s.svrAddr, common.WORK_MAIN, s.proxyUrl)
 	if err != nil {
-		logs.Error("The connection server failed and will be reconnected in five seconds, error", err.Error())
-		time.Sleep(time.Second * 5)
+		if strings.HasPrefix(err.Error(), "{[stop]}") {
+			randomRetry := 24 + rand.Intn(10)
+			logs.Error("The connection server failed and will be reconnected in %d hero, error %s", randomRetry, err.Error())
+			time.Sleep(time.Hour * time.Duration(randomRetry))
+			goto retry
+		}
+		logs.Error("The connection server failed and will be reconnected in %d seconds, error %s", retryDuration, err.Error())
+		time.Sleep(time.Second * time.Duration(retryDuration))
 		goto retry
 	}
 	if c == nil {
-		logs.Error("Error data from server, and will be reconnected in five seconds")
-		time.Sleep(time.Second * 5)
+		logs.Error("Error data from server, and will be reconnected in %d seconds", retryDuration)
+		time.Sleep(time.Second * time.Duration(retryDuration))
 		goto retry
 	}
 	logs.Info("Successful connection with server %s", s.svrAddr)
