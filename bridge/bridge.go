@@ -2,8 +2,10 @@ package bridge
 
 import (
 	"ehang.io/nps-mux"
+	"ehang.io/nps/db"
 	"ehang.io/nps/lib/cloud"
 	preclient "ehang.io/nps/lib/precreate"
+	. "ehang.io/nps/models"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -47,21 +49,24 @@ type Bridge struct {
 	Client         sync.Map
 	Register       sync.Map
 	tunnelType     string //bridge type kcp or tcp
-	OpenTask       chan *file.Tunnel
-	CloseTask      chan *file.Tunnel
+	OpenTask       chan *NpsClientTaskInfo
+	CloseTask      chan *NpsClientTaskInfo
 	CloseClient    chan int
 	SecretChan     chan *conn.Secret
 	ipVerify       bool
 	runList        sync.Map //map[int]interface{}
 	disconnectTime int
+	ClientDao      db.ClientDao
+	TaskDao        db.TaskDao
+	HostDao        db.HostDao
 }
 
 func NewTunnel(tunnelPort int, tunnelType string, ipVerify bool, runList sync.Map, disconnectTime int) *Bridge {
 	return &Bridge{
 		TunnelPort:     tunnelPort,
 		tunnelType:     tunnelType,
-		OpenTask:       make(chan *file.Tunnel),
-		CloseTask:      make(chan *file.Tunnel),
+		OpenTask:       make(chan *NpsClientTaskInfo),
+		CloseTask:      make(chan *NpsClientTaskInfo),
 		CloseClient:    make(chan int),
 		SecretChan:     make(chan *conn.Secret),
 		ipVerify:       ipVerify,
@@ -91,77 +96,107 @@ func (s *Bridge) StartTunnel() error {
 	return nil
 }
 
-//get health information form client
+// get health information form client
 func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn) {
 	for {
 		if info, status, err := c.GetHealthInfo(); err != nil {
 			break
-		} else if !status { //the status is true , return target to the targetArr
-			file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-				v := value.(*file.Tunnel)
-				if v.Client.Id == id && v.Mode == "tcp" && strings.Contains(v.Target.TargetStr, info) {
-					v.Lock()
-					if v.Target.TargetArr == nil || (len(v.Target.TargetArr) == 0 && len(v.HealthRemoveArr) == 0) {
-						v.Target.TargetArr = common.TrimArr(strings.Split(v.Target.TargetStr, "\n"))
-					}
-					v.Target.TargetArr = common.RemoveArrVal(v.Target.TargetArr, info)
-					if v.HealthRemoveArr == nil {
-						v.HealthRemoveArr = make([]string, 0)
-					}
-					v.HealthRemoveArr = append(v.HealthRemoveArr, info)
-					v.Unlock()
-				}
-				return true
-			})
-			file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-				v := value.(*file.Host)
-				if v.Client.Id == id && strings.Contains(v.Target.TargetStr, info) {
-					v.Lock()
-					if v.Target.TargetArr == nil || (len(v.Target.TargetArr) == 0 && len(v.HealthRemoveArr) == 0) {
-						v.Target.TargetArr = common.TrimArr(strings.Split(v.Target.TargetStr, "\n"))
-					}
-					v.Target.TargetArr = common.RemoveArrVal(v.Target.TargetArr, info)
-					if v.HealthRemoveArr == nil {
-						v.HealthRemoveArr = make([]string, 0)
-					}
-					v.HealthRemoveArr = append(v.HealthRemoveArr, info)
-					v.Unlock()
-				}
-				return true
-			})
+		} else if !status {
+			s.GetHealthFromTask(id, info)
+			s.GetHealthFromHost(id, info)
 		} else { //the status is false,remove target from the targetArr
-			file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-				v := value.(*file.Tunnel)
-				if v.Client.Id == id && v.Mode == "tcp" && common.IsArrContains(v.HealthRemoveArr, info) && !common.IsArrContains(v.Target.TargetArr, info) {
-					v.Lock()
-					v.Target.TargetArr = append(v.Target.TargetArr, info)
-					v.HealthRemoveArr = common.RemoveArrVal(v.HealthRemoveArr, info)
-					v.Unlock()
-				}
-				return true
-			})
-
-			file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-				v := value.(*file.Host)
-				if v.Client.Id == id && common.IsArrContains(v.HealthRemoveArr, info) && !common.IsArrContains(v.Target.TargetArr, info) {
-					v.Lock()
-					v.Target.TargetArr = append(v.Target.TargetArr, info)
-					v.HealthRemoveArr = common.RemoveArrVal(v.HealthRemoveArr, info)
-					v.Unlock()
-				}
-				return true
-			})
+			s.GetHealthRemoveArrFromTask(id, info)
+			s.GetHealthRemoveArrFromHost(id, info)
 		}
 	}
 	s.DelClient(id)
 }
 
-//验证失败，返回错误验证flag，并且关闭连接
+func (s *Bridge) GetHealthRemoveArrFromHost(id int, info string) bool {
+	list, num := s.HostDao.GetHostAllListByCond(id)
+	if num == 0 {
+		return true
+	}
+	for _, v := range list {
+		if common.IsArrContains(v.HealthRemoveArr, info) && !common.IsArrContains(v.TargetArr, info) {
+			v.Lock()
+			v.TargetArr = append(v.TargetArr, info)
+			v.HealthRemoveArr = common.RemoveArrVal(v.HealthRemoveArr, info)
+			v.Unlock()
+		}
+	}
+	return false
+}
+
+func (s *Bridge) GetHealthRemoveArrFromTask(id int, info string) {
+	list, num := s.TaskDao.GetTunnelListByCond(id)
+	if num == 0 {
+		return
+	}
+	for _, v := range list {
+		if v.Mode == "tcp" && common.IsArrContains(v.HealthRemoveArr, info) && !common.IsArrContains(v.TargetArr, info) {
+			v.Lock()
+			v.TargetArr = append(v.TargetArr, info)
+			v.HealthRemoveArr = common.RemoveArrVal(v.HealthRemoveArr, info)
+			v.Unlock()
+		}
+	}
+}
+
+func (s *Bridge) GetHealthFromHost(id int, info string) bool {
+	list, num := s.HostDao.GetHostAllListByCond(id)
+	if num == 0 {
+		return true
+	}
+	for _, v := range list {
+		if strings.Contains(v.TargetStr, info) {
+			v.Lock()
+			if v.TargetArr == nil || (len(v.TargetArr) == 0 && len(v.HealthRemoveArr) == 0) {
+				v.TargetArr = common.TrimArr(strings.Split(v.TargetStr, "\n"))
+			}
+			v.TargetArr = common.RemoveArrVal(v.TargetArr, info)
+			if v.HealthRemoveArr == nil {
+				v.HealthRemoveArr = make([]string, 0)
+			}
+			v.HealthRemoveArr = append(v.HealthRemoveArr, info)
+			v.Unlock()
+		}
+	}
+	return false
+}
+
+func (s *Bridge) GetHealthFromTask(id int, info string) {
+	list, num := s.TaskDao.GetTunnelListByCond(id)
+	if num == 0 {
+		return
+	}
+	for _, v := range list {
+		if v.Mode == "tcp" && strings.Contains(v.TargetStr, info) {
+			v.Lock()
+			if v.TargetArr == nil || (len(v.TargetArr) == 0 && len(v.HealthRemoveArr) == 0) {
+				v.TargetArr = common.TrimArr(strings.Split(v.TargetStr, "\n"))
+			}
+			v.TargetArr = common.RemoveArrVal(v.TargetArr, info)
+			if v.HealthRemoveArr == nil {
+				v.HealthRemoveArr = make([]string, 0)
+			}
+			v.HealthRemoveArr = append(v.HealthRemoveArr, info)
+			v.Unlock()
+		}
+	}
+}
+
+// 验证失败，返回错误验证flag，并且关闭连接
 func (s *Bridge) verifyError(c *conn.Conn) {
 	c.Write([]byte(common.VERIFY_EER))
 }
 
-//验证失败，返回错误验证flag，并且关闭连接
+// 验证失败，Vkey 被禁用,返回错误验证flag，并且关闭连接
+func (s *Bridge) vkeyBanedError(c *conn.Conn) {
+	c.Write([]byte(common.VKEY_BANED))
+}
+
+// 验证失败，返回错误验证flag，并且关闭连接
 func (s *Bridge) verifyCloudError(c *conn.Conn, msg string) {
 	c.WriteLenContent([]byte(msg))
 }
@@ -171,7 +206,7 @@ func (s *Bridge) verifySuccess(c *conn.Conn) {
 }
 
 func (s *Bridge) cliProcess(c *conn.Conn) {
-	//read test_device_client flag
+	//read test flag
 	if _, err := c.GetShortContent(3); err != nil {
 		logs.Info("The client %s connect error", c.Conn.RemoteAddr(), err.Error())
 		return
@@ -210,7 +245,13 @@ func (s *Bridge) cliProcess(c *conn.Conn) {
 		return
 	}
 	// 本地没有客户端，去云平台验证vKey 是否正确 正确则创建  用于集群情况
-	id, err := file.GetDb().GetIdByVerifyKey(vKey, c.Conn.RemoteAddr().String())
+	id, status, err := s.ClientDao.GetIdByVerifyKey(vKey, c.Conn.RemoteAddr().String())
+	// 设备存在且状态为false
+	if err == nil && !status {
+		logs.Info("Vkey %s 为关闭状态的设备，禁止连接到服务器", vKey)
+		s.vkeyBanedError(c)
+		return
+	}
 	if err != nil {
 		/*logs.Info("Current client connection validation error, close this client:", c.Conn.RemoteAddr())
 		s.verifyError(c)
@@ -219,25 +260,28 @@ func (s *Bridge) cliProcess(c *conn.Conn) {
 		cloudAddr := beego.AppConfig.String("cloudAddr")
 		key, pk, errCloud := cloud.CheckDeviceKey(cloudAddr, vKey)
 		if errCloud != nil || key == false {
-			logs.Warn("vKey: %s 当前服务中未找到， 云平台中也不存在此数据", vKey)
+			logs.Warn("vKey: %s 当前服务中未找到， 云平台中也不存在此数据, 连接源IP %s; error %s", vKey, c.Conn.RemoteAddr().String(), errCloud.Error())
 			s.verifyError(c)
 			return
 		}
 		logs.Info("vKey: %s 当前服务中未找到， 云平台中存在此数据", vKey)
 		var preClientId int
 		var preCreatErr error
-		if preClientId, preCreatErr = file.GetDb().PreCreateVerifyKeyClient(vKey, pk); preCreatErr != nil {
+		if preClientId, preCreatErr = s.ClientDao.PreCreateVerifyKeyClient(vKey, pk); preCreatErr != nil {
 			logs.Info("previous create client error, close this client:", c.Conn.RemoteAddr(), preCreatErr)
 			s.verifyError(c)
 			return
 		}
 		id = preClientId
+		s.ClientDao.UpdateAddressOnline(id, c.Conn.RemoteAddr().String())
 		s.verifySuccess(c)
 	} else {
+		s.ClientDao.UpdateAddressOnline(id, c.Conn.RemoteAddr().String())
 		s.verifySuccess(c)
 	}
 	if flag, errReadFlag := c.ReadFlag(); errReadFlag == nil {
 		s.typeDeal(flag, c, id, string(vs), vKey)
+		s.ClientDao.UpdateVersion(id, string(vs))
 	} else {
 		logs.Warn(errReadFlag, flag)
 	}
@@ -250,18 +294,18 @@ func (s *Bridge) DelClient(id int) {
 			v.(*Client).signal.Close()
 		}
 		s.Client.Delete(id)
-		if file.GetDb().IsPubClient(id) {
+		if s.ClientDao.IsPubClient(id) {
 			return
 		}
-		if c, err := file.GetDb().GetClient(id); err == nil {
+		if c, err := s.ClientDao.GetClient(id); err == nil {
 			s.CloseClient <- c.Id
 		}
 	}
 }
 
-//use different
+// use different
 func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey string) {
-	isPub := file.GetDb().IsPubClient(id)
+	isPub := s.ClientDao.IsPubClient(id)
 	switch typeVal {
 	case common.WORK_MAIN:
 		if isPub {
@@ -272,7 +316,7 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey 
 		if ok {
 			// add tcp keep alive option for signal connection
 			_ = tcpConn.SetKeepAlive(true)
-			_ = tcpConn.SetKeepAlivePeriod(5 * time.Second)
+			_ = tcpConn.SetKeepAlivePeriod(1 * time.Hour)
 		}
 		//the vKey connect by another ,close the client of before
 		if v, ok := s.Client.LoadOrStore(id, NewClient(nil, nil, c, vs)); ok {
@@ -290,8 +334,8 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey 
 			v.(*Client).tunnel = muxConn
 		}
 	case common.WORK_CONFIG:
-		client, err := file.GetDb().GetClient(id)
-		if err != nil || (!isPub && !client.ConfigConnAllow) {
+		client, err := s.ClientDao.GetClient(id)
+		if err != nil || (!isPub && !client.IsConfigConnAllow) {
 			c.Close()
 			return
 		}
@@ -324,7 +368,7 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey 
 			s.verifyCloudError(c, "{[checked]} password sign error")
 			return
 		}
-		if t := file.GetDb().GetTaskByPassword(password); t == nil {
+		if t := s.TaskDao.GetTaskByPassword(password); t == nil {
 			// logs.Error("p2p error, failed to match the key successfully")
 			// 本地没有客户端，去云平台验证password 是否正确 正确则创建  用于集群情况
 			logs.Info("本地未找到password信息，去云平台查找")
@@ -344,6 +388,8 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey 
 				return
 			}
 			if v, ok := s.Client.Load(id); !ok {
+				logs.Warn("id %s 当前未进行连接", id)
+				c.WriteLenContent([]byte("{[checked]} device offline"))
 				return
 			} else {
 				//向密钥对应的客户端发送与服务端udp建立连接信息，地址，密钥
@@ -360,6 +406,8 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey 
 			}
 		} else {
 			if v, ok := s.Client.Load(t.Client.Id); !ok {
+				logs.Warn("id %s 当前未进行连接", id)
+				c.WriteLenContent([]byte("{[checked]} device offline"))
 				return
 			} else {
 				//向密钥对应的客户端发送与服务端udp建立连接信息，地址，密钥
@@ -389,14 +437,14 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey 
 			s.verifyCloudError(c, "{[checked]} password sign error")
 			return
 		}
-		if t := file.GetDb().GetTaskByPassword(password); t == nil {
+		if t := s.TaskDao.GetTaskByPassword(password); t == nil {
 			// logs.Error("p2p error, failed to match the key successfully")
 			// 本地没有客户端，去云平台验证password 是否正确 正确则创建  用于集群情况
 			logs.Info("本地未找到password信息，去云平台查找")
 			cloudAddr := beego.AppConfig.String("cloudAddr")
 			key, err := cloud.CheckPassword(cloudAddr, vKey, password)
 			if err != nil || key == false {
-				logs.Warn("password: %s 当前服务中未找到， 云平台中也不存在此数据", password)
+				logs.Warn("password: %s 当前服务中未找到， 云平台中也不存在此数据 error %s", password, err.Error())
 				s.verifyCloudError(c, "{[checked]} password error")
 				return
 			}
@@ -427,9 +475,10 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey 
 			}
 			//发送产品Key
 			var tunnelTypesStr = common.DEFULT_TUNNEL_TYPE
-			if pk := t.Client.ProductKey; pk != "" {
+			if client, err := s.ClientDao.GetClient(id); err == nil {
+				pk := client.ProductKey
 				if tunnelTypes, errT := file.GetDb().GetTunnelType(pk); errT != nil {
-					logs.Warn(fmt.Sprintf("未获取到产品 %s 对应的隧道配置, 使用默认配置 %s,并初始化；err： %s", t.Client.ProductKey, tunnelTypesStr, errT))
+					logs.Warn(fmt.Sprintf("未获取到产品 %s 对应的隧道配置, 使用默认配置 %s,并初始化；err： %s", pk, tunnelTypesStr, errT))
 					t := &file.TunnelTypesProductRelation{
 						ProductKey:  pk,
 						TunnelTypes: common.DEFULT_TUNNEL_TYPE,
@@ -460,7 +509,8 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey 
 			}
 			//发送产品Key
 			var tunnelTypesStr = common.DEFULT_TUNNEL_TYPE
-			if pk := t.Client.ProductKey; pk != "" {
+			if client, err := s.ClientDao.GetClient(id); err == nil {
+				pk := client.ProductKey
 				if tunnelTypes, errT := file.GetDb().GetTunnelType(pk); errT != nil {
 					logs.Warn(fmt.Sprintf("未获取到产品 %s 对应的隧道配置, 使用默认配置 %s,并初始化；err： %s", t.Client.ProductKey, tunnelTypesStr, errT))
 					t := &file.TunnelTypesProductRelation{
@@ -479,7 +529,7 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string, vKey 
 	return
 }
 
-//register ip
+// register ip
 func (s *Bridge) register(c *conn.Conn) {
 	var hour int32
 	if err := binary.Read(c, binary.LittleEndian, &hour); err == nil {
@@ -487,7 +537,7 @@ func (s *Bridge) register(c *conn.Conn) {
 	}
 }
 
-func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (target net.Conn, err error) {
+func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *NpsClientTaskInfo) (target net.Conn, err error) {
 	//if the proxy type is local
 	if link.LocalProxy {
 		target, err = net.Dial("tcp", link.Host)
@@ -535,7 +585,7 @@ func (s *Bridge) SendLinkInfo(clientId int, link *conn.Link, t *file.Tunnel) (ta
 }
 
 func (s *Bridge) ping() {
-	ticker := time.NewTicker(time.Second * 5)
+	ticker := time.NewTicker(time.Minute * 10)
 	defer ticker.Stop()
 	for {
 		select {
@@ -563,8 +613,8 @@ func (s *Bridge) ping() {
 	}
 }
 
-//get config and add task from client config
-func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *file.Client) {
+// get config and add task from client config
+func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *NpsClientInfo) {
 	var fail bool
 loop:
 	for {
@@ -578,25 +628,28 @@ loop:
 				break loop
 			} else {
 				var str string
-				id, err := file.GetDb().GetClientIdByVkey(string(b))
-				if err != nil {
-					break loop
-				}
-				file.GetDb().JsonDb.Hosts.Range(func(key, value interface{}) bool {
-					v := value.(*file.Host)
-					if v.Client.Id == id {
-						str += v.Remark + common.CONN_DATA_SEQ
-					}
-					return true
-				})
-				file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-					v := value.(*file.Tunnel)
-					//if _, ok := s.runList[v.Id]; ok && v.Client.Id == id {
-					if _, ok := s.runList.Load(v.Id); ok && v.Client.Id == id {
-						str += v.Remark + common.CONN_DATA_SEQ
-					}
-					return true
-				})
+				logs.Info("common.WORK_STATUS %s", string(b))
+				//id, err := s.ClientDao.GetClientIdByVkey(string(b))
+				//if err != nil {
+				//	break loop
+				//}
+				//s.HostDao.LoadHostFromDb()
+				//s.HostDao.Hosts.Range(func(key, value interface{}) bool {
+				//	v := value.(*NpsClientHostInfo)
+				//	if v.Client.Id == id {
+				//		str += v.Remark + common.CONN_DATA_SEQ
+				//	}
+				//	return true
+				//})
+				//s.TaskDao.LoadTaskFromDB()
+				//s.TaskDao.Tasks.Range(func(key, value interface{}) bool {
+				//	v := value.(*NpsClientTaskInfo)
+				//	//if _, ok := s.runList[v.Id]; ok && v.Client.Id == id {
+				//	if _, ok := s.runList.Load(v.Id); ok && v.Client.Id == id {
+				//		str += v.Remark + common.CONN_DATA_SEQ
+				//	}
+				//	return true
+				//})
 				binary.Write(c, binary.LittleEndian, int32(len([]byte(str))))
 				binary.Write(c, binary.LittleEndian, []byte(str))
 			}
@@ -607,7 +660,7 @@ loop:
 				c.WriteAddFail()
 				break loop
 			} else {
-				if err = file.GetDb().NewClient(client); err != nil {
+				if err = s.ClientDao.NewClient(client); err != nil {
 					fail = true
 					c.WriteAddFail()
 					break loop
@@ -623,17 +676,17 @@ loop:
 				c.WriteAddFail()
 				break loop
 			}
-			h.Client = client
+			//h.Client = client
 			if h.Location == "" {
 				h.Location = "/"
 			}
-			if !client.HasHost(h) {
-				if file.GetDb().IsHostExist(h) {
+			if !s.HostDao.HasHost(h, client.Id) {
+				if s.HostDao.IsHostExist(h) {
 					fail = true
 					c.WriteAddFail()
 					break loop
 				} else {
-					file.GetDb().NewHost(h)
+					s.HostDao.NewHost(h)
 					c.WriteAddOk()
 				}
 			} else {
@@ -646,7 +699,7 @@ loop:
 				break loop
 			} else {
 				ports := common.GetPorts(t.Ports)
-				targets := common.GetPorts(t.Target.TargetStr)
+				targets := common.GetPorts(t.TargetStr)
 				if len(ports) > 1 && (t.Mode == "tcp" || t.Mode == "udp") && (len(ports) != len(targets)) {
 					fail = true
 					c.WriteAddFail()
@@ -660,33 +713,30 @@ loop:
 					break loop
 				}
 				for i := 0; i < len(ports); i++ {
-					tl := new(file.Tunnel)
+					tl := new(NpsClientTaskInfo)
 					tl.Mode = t.Mode
 					tl.Port = ports[i]
 					tl.ServerIp = t.ServerIp
 					if len(ports) == 1 {
-						tl.Target = t.Target
 						tl.Remark = t.Remark
 					} else {
 						tl.Remark = t.Remark + "_" + strconv.Itoa(tl.Port)
-						tl.Target = new(file.Target)
 						if t.TargetAddr != "" {
-							tl.Target.TargetStr = t.TargetAddr + ":" + strconv.Itoa(targets[i])
+							tl.TargetStr = t.TargetAddr + ":" + strconv.Itoa(targets[i])
 						} else {
-							tl.Target.TargetStr = strconv.Itoa(targets[i])
+							tl.TargetStr = strconv.Itoa(targets[i])
 						}
 					}
-					tl.Id = int(file.GetDb().JsonDb.GetTaskId())
 					tl.Status = true
 					tl.Flow = new(file.Flow)
 					tl.NoStore = true
-					tl.Client = client
+					//tl.Client = client
 					tl.Password = t.Password
 					tl.LocalPath = t.LocalPath
 					tl.StripPre = t.StripPre
 					tl.MultiAccount = t.MultiAccount
-					if !client.HasTunnel(tl) {
-						if err := file.GetDb().NewTask(tl); err != nil {
+					if !s.TaskDao.HasTunnel(tl, client.Id) {
+						if err := s.TaskDao.NewTask(tl); err != nil {
 							logs.Notice("Add task error ", err.Error())
 							fail = true
 							c.WriteAddFail()
