@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"html"
 	"math"
 	"strconv"
@@ -9,7 +10,6 @@ import (
 
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/crypt"
-	"ehang.io/nps/lib/file"
 	"ehang.io/nps/server"
 	"github.com/astaxie/beego"
 )
@@ -20,7 +20,7 @@ type BaseController struct {
 	actionName     string
 }
 
-//初始化参数
+// Prepare 初始化参数
 func (s *BaseController) Prepare() {
 	s.Data["web_base_url"] = beego.AppConfig.String("web_base_url")
 	controllerName, actionName := s.GetControllerAndAction()
@@ -33,6 +33,10 @@ func (s *BaseController) Prepare() {
 	timestamp := s.GetIntNoErr("timestamp")
 	configKey := beego.AppConfig.String("auth_key")
 	timeNowUnix := time.Now().Unix()
+	// 上报信息接口控制
+	if controllerName == "ReportController" {
+		return
+	}
 	if !(md5Key != "" && (math.Abs(float64(timeNowUnix-int64(timestamp))) <= 20) && (crypt.Md5(configKey+strconv.Itoa(timestamp)) == md5Key)) {
 		if s.GetSession("auth") != true {
 			s.Redirect(beego.AppConfig.String("web_base_url")+"/login/index", 302)
@@ -62,7 +66,7 @@ func (s *BaseController) Prepare() {
 	s.Data["allow_user_change_username"], _ = beego.AppConfig.Bool("allow_user_change_username")
 }
 
-//加载模板
+// 加载模板
 func (s *BaseController) display(tpl ...string) {
 	s.Data["web_base_url"] = beego.AppConfig.String("web_base_url")
 	var tplname string
@@ -93,6 +97,15 @@ func (s *BaseController) error() {
 	s.TplName = "public/error.html"
 }
 
+func (s *BaseController) getRequestBodyBean(bean interface{}) (err error) {
+	body := s.Ctx.Input.RequestBody
+	err = json.Unmarshal(body, bean)
+	if err != nil {
+		return
+	}
+	return
+}
+
 //getEscapeString
 func (s *BaseController) getEscapeString(key string) string {
 	return html.EscapeString(s.GetString(key))
@@ -108,7 +121,15 @@ func (s *BaseController) GetIntNoErr(key string, def ...int) int {
 	return val
 }
 
-//获取去掉错误的bool值
+// bool 转int8
+func (s *BaseController) GetIntByBool(b bool) int8 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// 获取去掉错误的bool值
 func (s *BaseController) GetBoolNoErr(key string, def ...bool) bool {
 	strv := s.Ctx.Input.Query(key)
 	if len(strv) == 0 && len(def) > 0 {
@@ -128,6 +149,28 @@ func (s *BaseController) AjaxOk(str string) {
 //ajax错误返回
 func (s *BaseController) AjaxErr(str string) {
 	s.Data["json"] = ajax(str, 0)
+	s.ServeJSON()
+	s.StopRun()
+}
+
+// ajax向云平台返回成功
+func (s *BaseController) AjaxCloudOk(str string) {
+	json := make(map[string]interface{})
+	json["success"] = true
+	json["msg"] = str
+	json["code"] = 200
+	s.Data["json"] = json
+	s.ServeJSON()
+	s.StopRun()
+}
+
+// ajax向云平台返回错误
+func (s *BaseController) AjaxCloudErr(str string, code int) {
+	json := make(map[string]interface{})
+	json["success"] = false
+	json["msg"] = str
+	json["code"] = code
+	s.Data["json"] = json
 	s.ServeJSON()
 	s.StopRun()
 }
@@ -171,37 +214,39 @@ func (s *BaseController) SetType(name string) {
 }
 
 func (s *BaseController) CheckUserAuth() {
-	if s.controllerName == "client" {
-		if s.actionName == "add" {
-			s.StopRun()
-			return
-		}
-		if id := s.GetIntNoErr("id"); id != 0 {
-			if id != s.GetSession("clientId").(int) {
-				s.StopRun()
-				return
-			}
-		}
-	}
-	if s.controllerName == "index" {
-		if id := s.GetIntNoErr("id"); id != 0 {
-			belong := false
-			if strings.Contains(s.actionName, "h") {
-				if v, ok := file.GetDb().JsonDb.Hosts.Load(id); ok {
-					if v.(*file.Host).Client.Id == s.GetSession("clientId").(int) {
-						belong = true
-					}
-				}
-			} else {
-				if v, ok := file.GetDb().JsonDb.Tasks.Load(id); ok {
-					if v.(*file.Tunnel).Client.Id == s.GetSession("clientId").(int) {
-						belong = true
-					}
-				}
-			}
-			if !belong {
-				s.StopRun()
-			}
-		}
-	}
+	//if s.controllerName == "client" {
+	//	if s.actionName == "add" {
+	//		s.StopRun()
+	//		return
+	//	}
+	//	if id := s.GetIntNoErr("id"); id != 0 {
+	//		if id != s.GetSession("clientId").(int) {
+	//			s.StopRun()
+	//			return
+	//		}
+	//	}
+	//}
+	//if s.controllerName == "index" {
+	//	if id := s.GetIntNoErr("id"); id != 0 {
+	//		belong := false
+	//		if strings.Contains(s.actionName, "h") {
+	//			server.HostDao.LoadHostFromDb()
+	//			if v, ok := server.HostDao.Hosts.Load(id); ok {
+	//				if v.(*models.NpsClientHostInfo).Client.Id == s.GetSession("clientId").(int) {
+	//					belong = true
+	//				}
+	//			}
+	//		} else {
+	//			server.TaskDao.LoadTaskFromDB()
+	//			if v, ok := server.TaskDao.Tasks.Load(id); ok {
+	//				if v.(*models.NpsClientTaskInfo).Client.Id == s.GetSession("clientId").(int) {
+	//					belong = true
+	//				}
+	//			}
+	//		}
+	//		if !belong {
+	//			s.StopRun()
+	//		}
+	//	}
+	//}
 }
