@@ -170,10 +170,10 @@ re:
 	}
 
 	c.Close()
-	if cnf.CommonConfig.Client.WebUserName == "" || cnf.CommonConfig.Client.WebPassword == "" {
+	if cnf.CommonConfig.Client.WebUser == "" || cnf.CommonConfig.Client.WebPass == "" {
 		logs.Notice("web access login username:user password:%s", vkey)
 	} else {
-		logs.Notice("web access login username:%s password:%s", cnf.CommonConfig.Client.WebUserName, cnf.CommonConfig.Client.WebPassword)
+		logs.Notice("web access login username:%s password:%s", cnf.CommonConfig.Client.WebUser, cnf.CommonConfig.Client.WebPass)
 	}
 	NewRPClient(cnf.CommonConfig.Server, vkey, cnf.CommonConfig.Tp, cnf.CommonConfig.ProxyUrl, cnf, cnf.CommonConfig.DisconnectTime).Start()
 	CloseLocalServer()
@@ -243,6 +243,8 @@ func NewConn(tp string, vkey string, server string, connType string, proxyUrl st
 		return nil, err
 	} else if s == common.VERIFY_EER {
 		return nil, errors.New(fmt.Sprintf("Validation key %s incorrect", vkey))
+	} else if s == common.VKEY_BANED {
+		return nil, errors.New(fmt.Sprintf("{[stop]} Validation key %s 被禁用", vkey))
 	}
 	if _, err := c.Write([]byte(connType)); err != nil {
 		return nil, err
