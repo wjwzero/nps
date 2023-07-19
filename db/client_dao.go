@@ -115,9 +115,9 @@ func (ClientDao) GetClientListInfo(start, length int, search, sort, order string
 	list := make([]*NpsClientListInfo, 0)
 	cnt, dbErr := DbEngine.Table("nps_client_info").
 		Select("nps_client_info.id, `verify_key`, `addr`, `basic_auth_user`, `basic_auth_pass`, `device_key`, `version`, `status`,`product_key`, `remark`, `is_connect`, `is_config_conn_allow`, `is_compress`, `is_crypt`, `no_display`, `no_store`, `max_channel_num`, `max_connect_num`, `rate_limit`, `flow_limit`, `web_user`, `web_pass`, `nps_client_info`.`create_time`, `nps_client_info`.`update_time`,nps_client_statistic_flow.flow_inlet,nps_client_statistic_flow.flow_export,nps_client_statistic_rate.rate_now,nps_client_statistic_connect.now_connect_num").
-		Join("INNER", "nps_client_statistic_flow", "nps_client_info.Id = nps_client_statistic_flow.client_id").
-		Join("INNER", "nps_client_statistic_rate", "nps_client_info.Id = nps_client_statistic_rate.client_id").
-		Join("INNER", "nps_client_statistic_connect", "nps_client_info.Id = nps_client_statistic_connect.client_id").
+		Join("LEFT", "nps_client_statistic_flow", "nps_client_info.Id = nps_client_statistic_flow.client_id").
+		Join("LEFT", "nps_client_statistic_rate", "nps_client_info.Id = nps_client_statistic_rate.client_id").
+		Join("LEFT", "nps_client_statistic_connect", "nps_client_info.Id = nps_client_statistic_connect.client_id").
 		Limit(length, start).OrderBy("nps_client_info.id").FindAndCount(&list)
 	if dbErr != nil {
 		logs.Error(dbErr)
@@ -134,9 +134,9 @@ func (ClientDao) GetClientInfo(id int) (*NpsClientListInfo, error) {
 	cc := new(NpsClientListInfo)
 	has, err := DbEngine.Table("nps_client_info").
 		Select("nps_client_info.id, `verify_key`, `addr`, `basic_auth_user`, `basic_auth_pass`, `device_key`, `version`, `status`,`product_key`, `remark`, `is_connect`, `is_config_conn_allow`, `is_compress`, `is_crypt`, `no_display`, `no_store`, `max_channel_num`, `max_connect_num`, `rate_limit`, `flow_limit`, `web_user`, `web_pass`, `nps_client_info`.`create_time`, `nps_client_info`.`update_time`,nps_client_statistic_flow.flow_inlet,nps_client_statistic_flow.flow_export,nps_client_statistic_rate.rate_now,nps_client_statistic_connect.now_connect_num").
-		Join("INNER", "nps_client_statistic_flow", "nps_client_info.Id = nps_client_statistic_flow.client_id").
-		Join("INNER", "nps_client_statistic_rate", "nps_client_info.Id = nps_client_statistic_rate.client_id").
-		Join("INNER", "nps_client_statistic_connect", "nps_client_info.Id = nps_client_statistic_connect.client_id").
+		Join("LEFT", "nps_client_statistic_flow", "nps_client_info.Id = nps_client_statistic_flow.client_id").
+		Join("LEFT", "nps_client_statistic_rate", "nps_client_info.Id = nps_client_statistic_rate.client_id").
+		Join("LEFT", "nps_client_statistic_connect", "nps_client_info.Id = nps_client_statistic_connect.client_id").
 		Where("nps_client_info.id = ?", id).Get(cc)
 	if !has {
 		err = errors.New("未找到客户端")
@@ -149,9 +149,9 @@ func (ClientDao) GetClientAllListInfo() ([]*NpsClientListInfo, int) {
 	list := make([]*NpsClientListInfo, 0)
 	cnt, dbErr := DbEngine.Table("nps_client_info").
 		Select("nps_client_info.id, `verify_key`, `addr`, `basic_auth_user`, `basic_auth_pass`, `device_key`, `version`, `status`,`product_key`, `remark`, `is_connect`, `is_config_conn_allow`, `is_compress`, `is_crypt`, `no_display`, `no_store`, `max_channel_num`, `max_connect_num`, `rate_limit`, `flow_limit`, `web_user`, `web_pass`, `nps_client_info`.`create_time`, `nps_client_info`.`update_time`,nps_client_statistic_flow.flow_inlet,nps_client_statistic_flow.flow_export,nps_client_statistic_rate.rate_now,nps_client_statistic_connect.now_connect_num").
-		Join("INNER", "nps_client_statistic_flow", "nps_client_info.Id = nps_client_statistic_flow.client_id").
-		Join("INNER", "nps_client_statistic_rate", "nps_client_info.Id = nps_client_statistic_rate.client_id").
-		Join("INNER", "nps_client_statistic_connect", "nps_client_info.Id = nps_client_statistic_connect.client_id").
+		Join("LEFT", "nps_client_statistic_flow", "nps_client_info.Id = nps_client_statistic_flow.client_id").
+		Join("LEFT", "nps_client_statistic_rate", "nps_client_info.Id = nps_client_statistic_rate.client_id").
+		Join("LEFT", "nps_client_statistic_connect", "nps_client_info.Id = nps_client_statistic_connect.client_id").
 		FindAndCount(&list)
 	if dbErr != nil {
 		logs.Error(dbErr)
@@ -213,9 +213,9 @@ func (ClientDao) Save(c *NpsClientInfo) error {
 		logs.Error(dbErr)
 		return dbErr
 	}
-	dbErr = SaveClientConnect(c.Id)
-	dbErr = SaveClientFlow(c.Id)
-	dbErr = SaveClientRate(c.Id)
+	//dbErr = SaveClientConnect(c.Id)
+	//dbErr = SaveClientFlow(c.Id)
+	//dbErr = SaveClientRate(c.Id)
 	return dbErr
 }
 
