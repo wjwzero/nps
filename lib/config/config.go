@@ -1,6 +1,7 @@
 package config
 
 import (
+	"ehang.io/nps/models"
 	"errors"
 	"fmt"
 	"regexp"
@@ -16,7 +17,7 @@ type CommonConfig struct {
 	Tp               string //bridgeType kcp or tcp
 	AutoReconnection bool
 	ProxyUrl         string
-	Client           *file.Client
+	Client           *models.NpsClientInfo
 	DisconnectTime   int
 }
 
@@ -33,8 +34,8 @@ type Config struct {
 	content      string
 	title        []string
 	CommonConfig *CommonConfig
-	Hosts        []*file.Host
-	Tasks        []*file.Tunnel
+	Hosts        []*models.NpsClientHostInfo
+	Tasks        []*models.NpsClientTaskInfo
 	Healths      []*file.Health
 	LocalServer  []*LocalServer
 }
@@ -107,8 +108,7 @@ func getTitleContent(s string) string {
 
 func dealCommon(s string) *CommonConfig {
 	c := &CommonConfig{}
-	c.Client = file.NewClient("", true, true)
-	c.Client.Cnf = new(file.Config)
+	c.Client = models.NewClientInit("", true, true)
 	for _, v := range splitStr(s) {
 		item := strings.Split(v, "=")
 		if len(item) == 0 {
@@ -126,25 +126,25 @@ func dealCommon(s string) *CommonConfig {
 		case "auto_reconnection":
 			c.AutoReconnection = common.GetBoolByStr(item[1])
 		case "basic_username":
-			c.Client.Cnf.U = item[1]
+			c.Client.BasicAuthUser = item[1]
 		case "basic_password":
-			c.Client.Cnf.P = item[1]
+			c.Client.BasicAuthPass = item[1]
 		case "web_password":
-			c.Client.WebPassword = item[1]
+			c.Client.WebPass = item[1]
 		case "web_username":
-			c.Client.WebUserName = item[1]
+			c.Client.WebUser = item[1]
 		case "compress":
-			c.Client.Cnf.Compress = common.GetBoolByStr(item[1])
+			c.Client.IsCompress = common.GetBoolByStr(item[1])
 		case "crypt":
-			c.Client.Cnf.Crypt = common.GetBoolByStr(item[1])
+			c.Client.IsCrypt = common.GetBoolByStr(item[1])
 		case "proxy_url":
 			c.ProxyUrl = item[1]
 		case "rate_limit":
 			c.Client.RateLimit = common.GetIntNoErrByStr(item[1])
 		case "flow_limit":
-			c.Client.Flow.FlowLimit = int64(common.GetIntNoErrByStr(item[1]))
+			c.Client.FlowLimit = int64(common.GetIntNoErrByStr(item[1]))
 		case "max_conn":
-			c.Client.MaxConn = common.GetIntNoErrByStr(item[1])
+			c.Client.MaxConnectNum = common.GetIntNoErrByStr(item[1])
 		case "remark":
 			c.Client.Remark = item[1]
 		case "pprof_addr":
@@ -156,9 +156,8 @@ func dealCommon(s string) *CommonConfig {
 	return c
 }
 
-func dealHost(s string) *file.Host {
-	h := &file.Host{}
-	h.Target = new(file.Target)
+func dealHost(s string) *models.NpsClientHostInfo {
+	h := &models.NpsClientHostInfo{}
 	h.Scheme = "all"
 	var headerChange string
 	for _, v := range splitStr(s) {
@@ -172,7 +171,7 @@ func dealHost(s string) *file.Host {
 		case "host":
 			h.Host = item[1]
 		case "target_addr":
-			h.Target.TargetStr = strings.Replace(item[1], ",", "\n", -1)
+			h.TargetStr = strings.Replace(item[1], ",", "\n", -1)
 		case "host_change":
 			h.HostChange = item[1]
 		case "scheme":
@@ -216,9 +215,8 @@ func dealHealth(s string) *file.Health {
 	return h
 }
 
-func dealTunnel(s string) *file.Tunnel {
-	t := &file.Tunnel{}
-	t.Target = new(file.Target)
+func dealTunnel(s string) *models.NpsClientTaskInfo {
+	t := &models.NpsClientTaskInfo{}
 	for _, v := range splitStr(s) {
 		item := strings.Split(v, "=")
 		if len(item) == 0 {
@@ -234,9 +232,9 @@ func dealTunnel(s string) *file.Tunnel {
 		case "mode":
 			t.Mode = item[1]
 		case "target_addr":
-			t.Target.TargetStr = strings.Replace(item[1], ",", "\n", -1)
+			t.TargetStr = strings.Replace(item[1], ",", "\n", -1)
 		case "target_port":
-			t.Target.TargetStr = item[1]
+			t.TargetStr = item[1]
 		case "target_ip":
 			t.TargetAddr = item[1]
 		case "password":
