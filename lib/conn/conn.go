@@ -3,11 +3,18 @@ package conn
 import (
 	"bufio"
 	"bytes"
+	"ehang.io/nps/lib/common"
+	"ehang.io/nps/lib/crypt"
+	"ehang.io/nps/lib/file"
 	"ehang.io/nps/lib/goroutine"
+	"ehang.io/nps/lib/pmux"
+	"ehang.io/nps/lib/rate"
+	. "ehang.io/nps/models"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"github.com/astaxie/beego/logs"
+	"github.com/xtaci/kcp-go"
 	"io"
 	"net"
 	"net/http"
@@ -16,13 +23,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"ehang.io/nps/lib/common"
-	"ehang.io/nps/lib/crypt"
-	"ehang.io/nps/lib/file"
-	"ehang.io/nps/lib/pmux"
-	"ehang.io/nps/lib/rate"
-	"github.com/xtaci/kcp-go"
 )
 
 type Conn struct {
@@ -197,31 +197,27 @@ func (s *Conn) GetHealthInfo() (info string, status bool, err error) {
 	return "", false, errors.New("receive health info error")
 }
 
-//get task info
-func (s *Conn) GetHostInfo() (h *file.Host, err error) {
+// get task info
+func (s *Conn) GetHostInfo() (h *NpsClientHostInfo, err error) {
 	err = s.getInfo(&h)
-	h.Id = int(file.GetDb().JsonDb.GetHostId())
 	h.Flow = new(file.Flow)
 	h.NoStore = true
 	return
 }
 
-//get task info
-func (s *Conn) GetConfigInfo() (c *file.Client, err error) {
+// get task info
+func (s *Conn) GetConfigInfo() (c *NpsClientInfo, err error) {
 	err = s.getInfo(&c)
 	c.NoStore = true
 	c.Status = true
-	if c.Flow == nil {
-		c.Flow = new(file.Flow)
-	}
+	c.FlowLimit = 0
 	c.NoDisplay = false
 	return
 }
 
-//get task info
-func (s *Conn) GetTaskInfo() (t *file.Tunnel, err error) {
+// get task info
+func (s *Conn) GetTaskInfo() (t *NpsClientTaskInfo, err error) {
 	err = s.getInfo(&t)
-	t.Id = int(file.GetDb().JsonDb.GetTaskId())
 	t.NoStore = true
 	t.Flow = new(file.Flow)
 	return
