@@ -4,6 +4,7 @@ const (
 	CONN_DATA_SEQ     = "*#*" //Separator
 	VERIFY_EER        = "vkey"
 	VERIFY_SUCCESS    = "sucs"
+	VKEY_BANED        = "bans" //vkey 被禁用
 	WORK_MAIN         = "main"
 	WORK_CHAN         = "chan"
 	WORK_CONFIG       = "conf"
@@ -17,7 +18,7 @@ const (
 	WORK_P2P_SUCCESS  = "p2ps"
 	WORK_P2P_END      = "p2pe"
 	WORK_P2P_LAST     = "p2pl"
-	WORK_LAN          = "lan"
+	WORK_LAN          = "lanm"
 	WORK_STATUS       = "stus"
 	RES_MSG           = "msg0"
 	RES_CLOSE         = "clse"
