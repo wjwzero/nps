@@ -33,7 +33,7 @@
                     <div class="form-group" id="client_id">
                         <label class="col-sm-2 control-label font-bold" langtag="word-clientid"></label>
                         <div class="col-sm-10">
-                            <input value="{{.t.Client.Id}}" value="{{.client_id}}" class="form-control" type="text" name="client_id" placeholder="" langtag="word-clientid">
+                            <input value="{{.t.ClientId}}" value="{{.client_id}}" class="form-control" type="text" name="client_id" placeholder="" langtag="word-clientid">
                         </div>
                     </div>
 
@@ -62,8 +62,8 @@
                         <label class="control-label col-sm-2 font-bold" langtag="word-proxytolocal"></label>
                         <div class="col-sm-10">
                             <select class="form-control" name="local_proxy">
-                                <option  {{if eq false .t.Target.LocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
-                                <option  {{if eq true .t.Target.LocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
+                                <option  {{if eq false .t.IsLocalProxy}}selected{{end}} value="0" langtag="word-no"></option>
+                                <option  {{if eq true .t.IsLocalProxy}}selected{{end}} value="1" langtag="word-yes"></option>
                             </select>
                         </div>
                     </div>
@@ -71,7 +71,7 @@
                     <div class="form-group" id="target">
                         <label class="col-sm-2 control-label font-bold" langtag="word-target"></label>
                         <div class="col-sm-10">
-                            <textarea class="form-control" name="target" rows="4" placeholder="" langtag="info-suchasiplist">{{.t.Target.TargetStr}}</textarea>
+                            <textarea class="form-control" name="target" rows="4" placeholder="" langtag="info-suchasiplist">{{.t.TargetStr}}</textarea>
                             <span class="help-block m-b-none" langtag="info-targettunnel"></span>
                         </div>
                     </div>
