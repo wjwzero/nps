@@ -3,6 +3,8 @@ package proxy
 import (
 	"bufio"
 	"crypto/tls"
+	"ehang.io/nps/db"
+	"ehang.io/nps/models"
 	"io"
 	"net"
 	"net/http"
@@ -17,7 +19,6 @@ import (
 	"ehang.io/nps/lib/cache"
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/conn"
-	"ehang.io/nps/lib/file"
 	"ehang.io/nps/server/connection"
 	"github.com/astaxie/beego/logs"
 )
@@ -33,9 +34,10 @@ type httpServer struct {
 	addOrigin     bool
 	cache         *cache.Cache
 	cacheLen      int
+	HostDao       db.HostDao
 }
 
-func NewHttp(bridge *bridge.Bridge, c *file.Tunnel, httpPort, httpsPort int, useCache bool, cacheLen int, addOrigin bool) *httpServer {
+func NewHttp(bridge *bridge.Bridge, c *models.NpsClientTaskInfo, httpPort, httpsPort int, useCache bool, cacheLen int, addOrigin bool) *httpServer {
 	httpServer := &httpServer{
 		BaseServer: BaseServer{
 			task:   c,
@@ -116,7 +118,7 @@ func (s *httpServer) handleTunneling(w http.ResponseWriter, r *http.Request) {
 
 func (s *httpServer) handleHttp(c *conn.Conn, r *http.Request) {
 	var (
-		host       *file.Host
+		host       *models.NpsClientHostInfo
 		target     net.Conn
 		err        error
 		connClient io.ReadWriteCloser
@@ -138,8 +140,9 @@ func (s *httpServer) handleHttp(c *conn.Conn, r *http.Request) {
 reset:
 	if isReset {
 		host.Client.AddConn()
+		s.ClientStatisticDao.UpdateConnectNum(host.Client.Id, host.Client.NowConnectNum)
 	}
-	if host, err = file.GetDb().GetInfoByHost(r.Host, r); err != nil {
+	if host, err = s.HostDao.GetInfoByHost(r.Host, r); err != nil {
 		logs.Notice("the url %s %s %s can't be parsed!", r.URL.Scheme, r.Host, r.RequestURI)
 		return
 	}
@@ -148,17 +151,18 @@ reset:
 		return
 	}
 	if !isReset {
+		defer s.ClientStatisticDao.UpdateConnectNum(host.Client.Id, host.Client.NowConnectNum)
 		defer host.Client.AddConn()
 	}
-	if err = s.auth(r, c, host.Client.Cnf.U, host.Client.Cnf.P); err != nil {
+	if err = s.auth(r, c, host.Client.BasicAuthUser, host.Client.BasicAuthPass); err != nil {
 		logs.Warn("auth error", err, r.RemoteAddr)
 		return
 	}
-	if targetAddr, err = host.Target.GetRandomTarget(); err != nil {
+	if targetAddr, err = host.GetRandomTarget(); err != nil {
 		logs.Warn(err.Error())
 		return
 	}
-	lk = conn.NewLink("http", targetAddr, host.Client.Cnf.Crypt, host.Client.Cnf.Compress, r.RemoteAddr, host.Target.LocalProxy)
+	lk = conn.NewLink("http", targetAddr, host.Client.IsCrypt, host.Client.IsCompress, r.RemoteAddr, host.IsLocalProxy)
 	if target, err = s.bridge.SendLinkInfo(host.Client.Id, lk, nil); err != nil {
 		logs.Notice("connect to target %s error %s", lk.Host, err)
 		return
@@ -198,6 +202,7 @@ reset:
 					}
 					host.Flow.Add(0, int64(lenConn.Len))
 				}
+				s.ClientStatisticDao.UpdateFlow(host.Client.Id, host.Flow.InletFlow, host.Flow.ExportFlow)
 			}
 		}
 	}()
@@ -212,6 +217,7 @@ reset:
 				}
 				logs.Trace("%s request, method %s, host %s, url %s, remote address %s, return cache", r.URL.Scheme, r.Method, r.Host, r.URL.Path, c.RemoteAddr().String())
 				host.Flow.Add(0, int64(n))
+				s.ClientStatisticDao.UpdateFlow(host.Client.Id, host.Flow.InletFlow, host.Flow.ExportFlow)
 				//if return cache and does not create a new conn with client and Connection is not set or close, close the connection.
 				if strings.ToLower(r.Header.Get("Connection")) == "close" || strings.ToLower(r.Header.Get("Connection")) == "" {
 					break
@@ -221,7 +227,7 @@ reset:
 		}
 
 		//change the host and header and set proxy setting
-		common.ChangeHostAndHeader(r, host.HostChange, host.HeaderChange, c.Conn.RemoteAddr().String(), s.addOrigin)
+		common.ChangeHostAndHeader(r, host.HostChange, host.HostChange, c.Conn.RemoteAddr().String(), s.addOrigin)
 		logs.Trace("%s request, method %s, host %s, url %s, remote address %s, target %s", r.URL.Scheme, r.Method, r.Host, r.URL.Path, c.RemoteAddr().String(), lk.Host)
 		//write
 		lenConn = conn.NewLenConn(connClient)
@@ -230,7 +236,7 @@ reset:
 			break
 		}
 		host.Flow.Add(int64(lenConn.Len), 0)
-
+		s.ClientStatisticDao.UpdateFlow(host.Client.Id, host.Flow.InletFlow, host.Flow.ExportFlow)
 	readReq:
 		//read req from connection
 		if r, err = http.ReadRequest(bufio.NewReader(c)); err != nil {
@@ -239,7 +245,7 @@ reset:
 		r.URL.Scheme = scheme
 		//What happened ，Why one character less???
 		r.Method = resetReqMethod(r.Method)
-		if hostTmp, err := file.GetDb().GetInfoByHost(r.Host, r); err != nil {
+		if hostTmp, err := s.HostDao.GetInfoByHost(r.Host, r); err != nil {
 			logs.Notice("the url %s %s %s can't be parsed!", r.URL.Scheme, r.Host, r.RequestURI)
 			break
 		} else if host != hostTmp {
