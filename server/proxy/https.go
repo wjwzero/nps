@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"ehang.io/nps/db"
+	"ehang.io/nps/models"
 	"net"
 	"net/http"
 	"net/url"
@@ -10,7 +12,6 @@ import (
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/conn"
 	"ehang.io/nps/lib/crypt"
-	"ehang.io/nps/lib/file"
 	"github.com/astaxie/beego"
 	"github.com/astaxie/beego/logs"
 	"github.com/pkg/errors"
@@ -20,6 +21,7 @@ type HttpsServer struct {
 	httpServer
 	listener         net.Listener
 	httpsListenerMap sync.Map
+	HostDao          db.HostDao
 }
 
 func NewHttpsServer(l net.Listener, bridge NetBridge, useCache bool, cacheLen int) *HttpsServer {
@@ -32,7 +34,7 @@ func NewHttpsServer(l net.Listener, bridge NetBridge, useCache bool, cacheLen in
 	return https
 }
 
-//start https server
+// start https server
 func (https *HttpsServer) Start() error {
 	if b, err := beego.AppConfig.Bool("https_just_proxy"); err == nil && b {
 		conn.Accept(https.listener, func(c net.Conn) {
@@ -58,7 +60,7 @@ func (https *HttpsServer) Start() error {
 				l = v.(*HttpsListener)
 			} else {
 				r := buildHttpsRequest(serverName)
-				if host, err := file.GetDb().GetInfoByHost(serverName, r); err != nil {
+				if host, err := https.HostDao.GetInfoByHost(serverName, r); err != nil {
 					c.Close()
 					logs.Notice("the url %s can't be parsed!,remote addr %s", serverName, c.RemoteAddr().String())
 					return
@@ -99,14 +101,14 @@ func (https *HttpsServer) NewHttps(l net.Listener, certFile string, keyFile stri
 	}()
 }
 
-//handle the https which is just proxy to other client
+// handle the https which is just proxy to other client
 func (https *HttpsServer) handleHttps(c net.Conn) {
 	hostName, rb := GetServerNameFromClientHello(c)
 	var targetAddr string
 	r := buildHttpsRequest(hostName)
-	var host *file.Host
+	var host *models.NpsClientHostInfo
 	var err error
-	if host, err = file.GetDb().GetInfoByHost(hostName, r); err != nil {
+	if host, err = https.HostDao.GetInfoByHost(hostName, r); err != nil {
 		c.Close()
 		logs.Notice("the url %s can't be parsed!", hostName)
 		return
@@ -116,16 +118,17 @@ func (https *HttpsServer) handleHttps(c net.Conn) {
 		c.Close()
 		return
 	}
+	defer https.ClientStatisticDao.UpdateConnectNum(host.Client.Id, host.Client.NowConnectNum)
 	defer host.Client.AddConn()
-	if err = https.auth(r, conn.NewConn(c), host.Client.Cnf.U, host.Client.Cnf.P); err != nil {
+	if err = https.auth(r, conn.NewConn(c), host.Client.BasicAuthUser, host.Client.BasicAuthPass); err != nil {
 		logs.Warn("auth error", err, r.RemoteAddr)
 		return
 	}
-	if targetAddr, err = host.Target.GetRandomTarget(); err != nil {
+	if targetAddr, err = host.GetRandomTarget(); err != nil {
 		logs.Warn(err.Error())
 	}
 	logs.Trace("new https connection,clientId %d,host %s,remote address %s", host.Client.Id, r.Host, c.RemoteAddr().String())
-	https.DealClient(conn.NewConn(c), host.Client, targetAddr, rb, common.CONN_TCP, nil, host.Flow, host.Target.LocalProxy)
+	https.DealClient(conn.NewConn(c), host.Client, targetAddr, rb, common.CONN_TCP, nil, host.Flow, host.IsLocalProxy)
 }
 
 type HttpsListener struct {
