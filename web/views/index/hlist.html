@@ -65,10 +65,10 @@
         detailFormatter: function (index, row, element) {
             return '<b langtag="word-exportflow"></b>: ' + changeunit(row.Flow.ExportFlow) + '&emsp;'
                     + '<b langtag="word-inletflow"></b>: ' + changeunit(row.Flow.InletFlow) + '&emsp;'
-                    + '<b langtag="word-crypt"></b>: ' + row.Client.Cnf.Crypt + '&emsp;'
-                    + '<b langtag="word-compress"></b>: ' + row.Client.Cnf.Compress + '&emsp;'
-                    + '<b langtag="word-basicusername"></b>: ' + row.Client.Cnf.U + '&emsp;'
-                    + '<b langtag="word-basicpassword"></b>: ' + row.Client.Cnf.P + '&emsp;<br/><br>'
+                    + '<b langtag="word-crypt"></b>: ' + row.IsCrypt + '&emsp;'
+                    + '<b langtag="word-compress"></b>: ' + row.IsCompress + '&emsp;'
+                    + '<b langtag="word-basicusername"></b>: ' + row.BasicAuthUser + '&emsp;'
+                    + '<b langtag="word-basicpassword"></b>: ' + row.BasicAuthPass + '&emsp;<br/><br>'
                     + '<b langtag="word-httpscert"></b>: ' + row.CertFilePath + '&emsp;'
                     + '<b langtag="word-httpskey"></b>: ' + row.KeyFilePath + '&emsp;<br/><br>'
                     + '<b langtag="word-requestheader"></b>: ' + row.HeaderChange + '&emsp;<br/><br>'
@@ -83,12 +83,12 @@
                 visible: true//false表示不显示
             },
             {
-                field: 'Id',//域值
+                field: 'ClientId',//域值
                 title: '<span langtag="word-clientid"></span>',//标题
                 halign: 'center',
                 visible: true,//false表示不显示
                 formatter: function (value, row, index) {
-                    return row.Client.Id
+                    return row.ClientId
                 }
             },
             {
@@ -113,12 +113,12 @@
                 }
             },
             {
-                field: 'Target',//域值
+                field: 'TargetStr',//域值
                 title: '<span langtag="word-target"></span>',//标题
                 halign: 'center',
                 visible: true,//false表示不显示
                 formatter: function (value, row, index) {
-                    return row.Target.TargetStr
+                    return row.TargetStr
                 }
             },
             {
@@ -135,7 +135,7 @@
                 visible: true,//false表示不显示
                 formatter: function (value, row, index) {
                     hosturl = ((row.Scheme == 'http' ) ? 'http://' : 'https://') + row.Host + row.Location
-                    if (row.Client.IsConnect) {
+                    if (row.IsConnect) {
                         return '<a href="' + hosturl + '" target="_blank"><span class="badge badge-primary" langtag="word-online"></span></a>'
                     } else {
                         return '<span class="badge badge-badge" langtag="word-offline"></span>'
