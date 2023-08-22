@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	"ehang.io/nps/db"
 	"ehang.io/nps/lib/file"
+	"ehang.io/nps/models"
 	"ehang.io/nps/server"
 	"ehang.io/nps/server/tool"
 
@@ -10,6 +12,9 @@ import (
 
 type IndexController struct {
 	BaseController
+	ClientDao db.ClientDao
+	TaskDao   db.TaskDao
+	HostDao   db.HostDao
 }
 
 func (s *IndexController) Index() {
@@ -69,6 +74,18 @@ func (s *IndexController) Host() {
 	s.display("index/list")
 }
 
+func (s *IndexController) Tunnel() {
+	s.SetInfo("tunnel")
+	s.SetType("tunnel")
+	s.display("tunnel/list")
+}
+
+func (s *IndexController) Config() {
+	s.SetInfo("config")
+	s.SetType("config")
+	s.display("config/list")
+}
+
 func (s *IndexController) All() {
 	s.Data["menu"] = "client"
 	clientId := s.getEscapeString("client_id")
@@ -81,7 +98,7 @@ func (s *IndexController) GetTunnel() {
 	start, length := s.GetAjaxParams()
 	taskType := s.getEscapeString("type")
 	clientId := s.GetIntNoErr("client_id")
-	list, cnt := server.GetTunnel(start, length, taskType, clientId, s.getEscapeString("search"))
+	list, cnt := s.TaskDao.GetTunnelList(start, length, taskType, clientId, s.getEscapeString("search"))
 	s.AjaxTable(list, cnt, cnt, nil)
 }
 
@@ -92,30 +109,32 @@ func (s *IndexController) Add() {
 		s.SetInfo("add tunnel")
 		s.display()
 	} else {
-		t := &file.Tunnel{
-			Port:      s.GetIntNoErr("port"),
-			ServerIp:  s.getEscapeString("server_ip"),
-			Mode:      s.getEscapeString("type"),
-			Target:    &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: s.GetBoolNoErr("local_proxy")},
-			Id:        int(file.GetDb().JsonDb.GetTaskId()),
-			Status:    true,
-			Remark:    s.getEscapeString("remark"),
-			Password:  s.getEscapeString("password"),
-			LocalPath: s.getEscapeString("local_path"),
-			StripPre:  s.getEscapeString("strip_pre"),
-			Flow:      &file.Flow{},
+		t := &models.NpsClientTaskInfo{
+			Port:         s.GetIntNoErr("port"),
+			ServerIp:     s.getEscapeString("server_ip"),
+			ClientId:     s.GetIntNoErr("client_id"),
+			Mode:         s.getEscapeString("type"),
+			TargetStr:    s.getEscapeString("target"),
+			IsLocalProxy: s.GetBoolNoErr("local_proxy"),
+			Status:       true,
+			Remark:       s.getEscapeString("remark"),
+			Password:     s.getEscapeString("password"),
+			LocalPath:    s.getEscapeString("local_path"),
+			StripPre:     s.getEscapeString("strip_pre"),
+			Flow:         &file.Flow{},
 		}
 		if !tool.TestServerPort(t.Port, t.Mode) {
 			s.AjaxErr("The port cannot be opened because it may has been occupied or is no longer allowed.")
 		}
+		t.RunStatus = true
 		var err error
-		if t.Client, err = file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
+		if t.Client, err = s.ClientDao.GetClientInfo(s.GetIntNoErr("client_id")); err != nil {
 			s.AjaxErr(err.Error())
 		}
-		if t.Client.MaxTunnelNum != 0 && t.Client.GetTunnelNum() >= t.Client.MaxTunnelNum {
+		if t.Client.MaxChannelNum != 0 && s.TaskDao.GetTunnelNum(t.Client.Id) >= t.Client.MaxChannelNum {
 			s.AjaxErr("The number of tunnels exceeds the limit")
 		}
-		if err := file.GetDb().NewTask(t); err != nil {
+		if err := s.TaskDao.NewTask(t); err != nil {
 			s.AjaxErr(err.Error())
 		}
 		if err := server.AddTask(t); err != nil {
@@ -128,7 +147,7 @@ func (s *IndexController) Add() {
 func (s *IndexController) GetOneTunnel() {
 	id := s.GetIntNoErr("id")
 	data := make(map[string]interface{})
-	if t, err := file.GetDb().GetTask(id); err != nil {
+	if t, err := s.TaskDao.GetTask(id); err != nil {
 		data["code"] = 0
 	} else {
 		data["code"] = 1
@@ -140,7 +159,7 @@ func (s *IndexController) GetOneTunnel() {
 func (s *IndexController) Edit() {
 	id := s.GetIntNoErr("id")
 	if s.Ctx.Request.Method == "GET" {
-		if t, err := file.GetDb().GetTask(id); err != nil {
+		if t, err := s.TaskDao.GetTask(id); err != nil {
 			s.error()
 		} else {
 			s.Data["t"] = t
@@ -148,10 +167,10 @@ func (s *IndexController) Edit() {
 		s.SetInfo("edit tunnel")
 		s.display()
 	} else {
-		if t, err := file.GetDb().GetTask(id); err != nil {
+		if t, err := s.TaskDao.GetTask(id); err != nil {
 			s.error()
 		} else {
-			if client, err := file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
+			if client, err := s.ClientDao.GetClientInfo(s.GetIntNoErr("client_id")); err != nil {
 				s.AjaxErr("modified error,the client is not exist")
 				return
 			} else {
@@ -166,14 +185,14 @@ func (s *IndexController) Edit() {
 			}
 			t.ServerIp = s.getEscapeString("server_ip")
 			t.Mode = s.getEscapeString("type")
-			t.Target = &file.Target{TargetStr: s.getEscapeString("target")}
+			t.TargetStr = s.getEscapeString("target")
 			t.Password = s.getEscapeString("password")
 			t.Id = id
 			t.LocalPath = s.getEscapeString("local_path")
 			t.StripPre = s.getEscapeString("strip_pre")
 			t.Remark = s.getEscapeString("remark")
-			t.Target.LocalProxy = s.GetBoolNoErr("local_proxy")
-			file.GetDb().UpdateTask(t)
+			t.IsLocalProxy = s.GetBoolNoErr("local_proxy")
+			s.TaskDao.UpdateTask(t)
 			server.StopServer(t.Id)
 			server.StartTask(t.Id)
 		}
@@ -214,7 +233,7 @@ func (s *IndexController) HostList() {
 	} else {
 		start, length := s.GetAjaxParams()
 		clientId := s.GetIntNoErr("client_id")
-		list, cnt := file.GetDb().GetHost(start, length, clientId, s.getEscapeString("search"))
+		list, cnt := s.HostDao.GetHostList(start, length, clientId, s.getEscapeString("search"), 0, "")
 		s.AjaxTable(list, cnt, cnt, nil)
 	}
 }
@@ -222,7 +241,7 @@ func (s *IndexController) HostList() {
 func (s *IndexController) GetHost() {
 	if s.Ctx.Request.Method == "POST" {
 		data := make(map[string]interface{})
-		if h, err := file.GetDb().GetHostById(s.GetIntNoErr("id")); err != nil {
+		if h, err := s.HostDao.GetHostById(s.GetIntNoErr("id")); err != nil {
 			data["code"] = 0
 		} else {
 			data["data"] = h
@@ -235,7 +254,7 @@ func (s *IndexController) GetHost() {
 
 func (s *IndexController) DelHost() {
 	id := s.GetIntNoErr("id")
-	if err := file.GetDb().DelHost(id); err != nil {
+	if err := s.HostDao.DelHost(id); err != nil {
 		s.AjaxErr("delete error")
 	}
 	s.AjaxOk("delete success")
@@ -248,10 +267,11 @@ func (s *IndexController) AddHost() {
 		s.SetInfo("add host")
 		s.display("index/hadd")
 	} else {
-		h := &file.Host{
-			Id:           int(file.GetDb().JsonDb.GetHostId()),
+		h := &models.NpsClientHostInfo{
 			Host:         s.getEscapeString("host"),
-			Target:       &file.Target{TargetStr: s.getEscapeString("target"), LocalProxy: s.GetBoolNoErr("local_proxy")},
+			ClientId:     s.GetIntNoErr("client_id"),
+			TargetStr:    s.getEscapeString("target"),
+			IsLocalProxy: s.GetBoolNoErr("local_proxy"),
 			HeaderChange: s.getEscapeString("header"),
 			HostChange:   s.getEscapeString("hostchange"),
 			Remark:       s.getEscapeString("remark"),
@@ -262,10 +282,10 @@ func (s *IndexController) AddHost() {
 			CertFilePath: s.getEscapeString("cert_file_path"),
 		}
 		var err error
-		if h.Client, err = file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
+		if h.Client, err = s.ClientDao.GetClientInfo(h.ClientId); err != nil {
 			s.AjaxErr("add error the client can not be found")
 		}
-		if err := file.GetDb().NewHost(h); err != nil {
+		if err := s.HostDao.NewHost(h); err != nil {
 			s.AjaxErr("add fail" + err.Error())
 		}
 		s.AjaxOk("add success")
@@ -276,7 +296,7 @@ func (s *IndexController) EditHost() {
 	id := s.GetIntNoErr("id")
 	if s.Ctx.Request.Method == "GET" {
 		s.Data["menu"] = "host"
-		if h, err := file.GetDb().GetHostById(id); err != nil {
+		if h, err := s.HostDao.GetHostById(id); err != nil {
 			s.error()
 		} else {
 			s.Data["h"] = h
@@ -284,26 +304,26 @@ func (s *IndexController) EditHost() {
 		s.SetInfo("edit")
 		s.display("index/hedit")
 	} else {
-		if h, err := file.GetDb().GetHostById(id); err != nil {
+		if h, err := s.HostDao.GetHostById(id); err != nil {
 			s.error()
 		} else {
 			if h.Host != s.getEscapeString("host") {
-				tmpHost := new(file.Host)
+				tmpHost := new(models.NpsClientHostInfo)
 				tmpHost.Host = s.getEscapeString("host")
 				tmpHost.Location = s.getEscapeString("location")
 				tmpHost.Scheme = s.getEscapeString("scheme")
-				if file.GetDb().IsHostExist(tmpHost) {
+				if s.HostDao.IsHostExist(tmpHost) {
 					s.AjaxErr("host has exist")
 					return
 				}
 			}
-			if client, err := file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
+			if client, err := s.ClientDao.GetClientInfo(s.GetIntNoErr("client_id")); err != nil {
 				s.AjaxErr("modified error,the client is not exist")
 			} else {
 				h.Client = client
 			}
 			h.Host = s.getEscapeString("host")
-			h.Target = &file.Target{TargetStr: s.getEscapeString("target")}
+			h.TargetStr = s.getEscapeString("target")
 			h.HeaderChange = s.getEscapeString("header")
 			h.HostChange = s.getEscapeString("hostchange")
 			h.Remark = s.getEscapeString("remark")
@@ -311,8 +331,8 @@ func (s *IndexController) EditHost() {
 			h.Scheme = s.getEscapeString("scheme")
 			h.KeyFilePath = s.getEscapeString("key_file_path")
 			h.CertFilePath = s.getEscapeString("cert_file_path")
-			h.Target.LocalProxy = s.GetBoolNoErr("local_proxy")
-			file.GetDb().JsonDb.StoreHostToJsonFile()
+			h.IsLocalProxy = s.GetBoolNoErr("local_proxy")
+			s.HostDao.SaveEdit(h)
 		}
 		s.AjaxOk("modified success")
 	}
