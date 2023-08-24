@@ -58,18 +58,18 @@
         onExpandRow: function () {$('body').setLang ('.detail-view');},
         onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang ('#table'); },
         detailFormatter: function (index, row, element) {
-            return '<b langtag="word-maxconnections"></b>: ' + row.MaxConn + '&emsp;'
-                + '<b langtag="word-curconnections"></b>: ' + row.NowConn + '&emsp;'
-                + '<b langtag="word-flowlimit"></b>: ' + row.Flow.FlowLimit + 'm&emsp;'
+            return '<b langtag="word-maxconnections"></b>: ' + row.MaxConnectNum + '&emsp;'
+                + '<b langtag="word-curconnections"></b>: ' + row.NowConnectNum + '&emsp;'
+                + '<b langtag="word-flowlimit"></b>: ' + row.FlowLimit + 'm&emsp;'
                 + '<b langtag="word-ratelimit"></b>: ' + row.RateLimit + 'kb/s&emsp;'
-                + '<b langtag="word-maxtunnels"></b>: ' + row.MaxTunnelNum + '&emsp;<br/><br/>'
-                + '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'
-                + '<b langtag="word-webpassword"></b>: ' + row.WebPassword + '&emsp;'
-                + '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;'
-                + '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>'
-                + '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
-                + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Cnf.Compress + '"></span>&emsp;'
-                + '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>'
+                + '<b langtag="word-maxtunnels"></b>: ' + row.MaxChannelNum + '&emsp;<br/><br/>'
+                + '<b langtag="word-webusername"></b>: ' + row.WebUser + '&emsp;'
+                + '<b langtag="word-webpassword"></b>: ' + row.WebPass + '&emsp;'
+                + '<b langtag="word-basicusername"></b>: ' + row.BasicAuthUser + '&emsp;'
+                + '<b langtag="word-basicpassword"></b>: ' + row.BasicAuthPass + '&emsp;<br/><br/>'
+                + '<b langtag="word-crypt"></b>: <span langtag="word-' + row.IsCrypt + '"></span>&emsp;'
+                + '<b langtag="word-compress"></b>: <span langtag="word-' + row.IsCompress + '"></span>&emsp;'
+                + '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.IsConfigConnAllow + '"></span>&emsp;<br/><br/>'
                 + '<b langtag="word-commandclient"></b>: ' + "<code>./npc{{.win}} -server={{.ip}}:{{.p}} -vkey=" + row.VerifyKey + " -type=" +{{.bridgeType}} +"</code>"
         },
         //表格的列
@@ -106,6 +106,12 @@
                 }
             },
             {
+                field: 'ProductKey',//产品Key
+                title: '<span langtag="word-productkey"></span>',//标题
+                halign: 'center',
+                visible: true//false表示不显示
+            },
+            {
                 field: 'Addr',//域值
                 title: '<span langtag="word-address"></span>',//标题
                 halign: 'center',
@@ -118,7 +124,7 @@
                 visible: true,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return changeunit(row.Flow.InletFlow)
+                    return changeunit(row.FlowInlet)
                 }
             },
             {
@@ -128,7 +134,7 @@
                 visible: true,//false表示不显示
                 sortable: true,//启用排序
                 formatter: function (value, row, index) {
-                    return changeunit(row.Flow.ExportFlow)
+                    return changeunit(row.FlowExport)
                 }
             },
             {
@@ -137,7 +143,7 @@
                 halign: 'center',
                 visible: true,//false表示不显示
                 formatter: function (value, row, index) {
-                    return changeunit(row.Rate.NowRate) + "/S"
+                    return changeunit(row.RateNow) + "/S"
                 }
             },
             {
