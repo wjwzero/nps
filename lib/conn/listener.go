@@ -37,6 +37,11 @@ func NewKcpListenerAndProcess(addr string, f func(c net.Conn)) error {
 }
 
 func Accept(l net.Listener, f func(c net.Conn)) {
+	defer func() {
+		if err := recover(); err != nil {
+			logs.Error("Listener Accept Error: ", err)
+		}
+	}()
 	for {
 		c, err := l.Accept()
 		if err != nil {
