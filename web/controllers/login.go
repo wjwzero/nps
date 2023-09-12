@@ -1,19 +1,21 @@
 package controllers
 
 import (
+	"ehang.io/nps/db"
+	"ehang.io/nps/models"
 	"math/rand"
 	"net"
 	"sync"
 	"time"
 
 	"ehang.io/nps/lib/common"
-	"ehang.io/nps/lib/file"
 	"ehang.io/nps/server"
 	"github.com/astaxie/beego"
 )
 
 type LoginController struct {
 	beego.Controller
+	ClientDao db.ClientDao
 }
 
 var ipRecord sync.Map
@@ -65,32 +67,33 @@ func (self *LoginController) doLogin(username, password string, explicit bool) b
 		auth = true
 		server.Bridge.Register.Store(common.GetIpByAddr(self.Ctx.Input.IP()), time.Now().Add(time.Hour*time.Duration(2)))
 	}
-	b, err := beego.AppConfig.Bool("allow_user_login")
-	if err == nil && b && !auth {
-		file.GetDb().JsonDb.Clients.Range(func(key, value interface{}) bool {
-			v := value.(*file.Client)
-			if !v.Status || v.NoDisplay {
-				return true
-			}
-			if v.WebUserName == "" && v.WebPassword == "" {
-				if username != "user" || v.VerifyKey != password {
-					return true
-				} else {
-					auth = true
-				}
-			}
-			if !auth && v.WebPassword == password && v.WebUserName == username {
-				auth = true
-			}
-			if auth {
-				self.SetSession("isAdmin", false)
-				self.SetSession("clientId", v.Id)
-				self.SetSession("username", v.WebUserName)
-				return false
-			}
-			return true
-		})
-	}
+	//b, err := beego.AppConfig.Bool("allow_user_login")
+	//if err == nil && b && !auth {
+	//	self.ClientDao.LoadClientFromDb()
+	//	self.ClientDao.Clients.Range(func(key, value interface{}) bool {
+	//		v := value.(*models.NpsClientInfo)
+	//		if !v.Status || v.NoDisplay {
+	//			return true
+	//		}
+	//		if v.WebUser == "" && v.WebPass == "" {
+	//			if username != "user" || v.VerifyKey != password {
+	//				return true
+	//			} else {
+	//				auth = true
+	//			}
+	//		}
+	//		if !auth && v.WebPass == password && v.WebUser == username {
+	//			auth = true
+	//		}
+	//		if auth {
+	//			self.SetSession("isAdmin", false)
+	//			self.SetSession("clientId", v.Id)
+	//			self.SetSession("username", v.WebUser)
+	//			return false
+	//		}
+	//		return true
+	//	})
+	//}
 	if auth {
 		self.SetSession("auth", true)
 		ipRecord.Delete(ip)
@@ -120,15 +123,12 @@ func (self *LoginController) Register() {
 			self.ServeJSON()
 			return
 		}
-		t := &file.Client{
-			Id:          int(file.GetDb().JsonDb.GetClientId()),
-			Status:      true,
-			Cnf:         &file.Config{},
-			WebUserName: self.GetString("username"),
-			WebPassword: self.GetString("password"),
-			Flow:        &file.Flow{},
+		t := &models.NpsClientInfo{
+			Status:  true,
+			WebUser: self.GetString("username"),
+			WebPass: self.GetString("password"),
 		}
-		if err := file.GetDb().NewClient(t); err != nil {
+		if err := self.ClientDao.NewClient(t); err != nil {
 			self.Data["json"] = map[string]interface{}{"status": 0, "msg": err.Error()}
 		} else {
 			self.Data["json"] = map[string]interface{}{"status": 1, "msg": "register success"}
