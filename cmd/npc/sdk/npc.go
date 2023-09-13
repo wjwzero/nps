@@ -4,7 +4,7 @@ import (
 	"ehang.io/nps/client"
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/config"
-	"ehang.io/nps/lib/file"
+	"ehang.io/nps/models"
 	"flag"
 	"github.com/astaxie/beego/logs"
 	"github.com/kardianos/service"
@@ -95,8 +95,7 @@ func run() {
 	localServer.Password = *password
 	localServer.Target = *target
 	localServer.Port = *localPort
-	commonConfig.Client = new(file.Client)
-	commonConfig.Client.Cnf = new(file.Config)
+	commonConfig.Client = new(models.NpsClientInfo)
 	go client.StartLocalServer(localServer, commonConfig)
 	return
 }
@@ -117,8 +116,7 @@ func (p *npc) GetLan(serverAddrParam string, verifyKeyParam string, passwordPara
 	localServer.Password = *password
 	localServer.Target = *target
 	localServer.Port = *localPort
-	commonConfig.Client = new(file.Client)
-	commonConfig.Client.Cnf = new(file.Config)
+	commonConfig.Client = new(models.NpsClientInfo)
 	localIp, err = client.GetLanAddr(localServer, commonConfig)
 	return
 }
