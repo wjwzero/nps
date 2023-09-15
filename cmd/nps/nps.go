@@ -1,6 +1,14 @@
 package main
 
 import (
+	"ehang.io/nps/db"
+	"ehang.io/nps/lib/install"
+	"ehang.io/nps/lib/version"
+	"ehang.io/nps/models"
+	"ehang.io/nps/server"
+	"ehang.io/nps/server/connection"
+	"ehang.io/nps/server/tool"
+	"ehang.io/nps/web/routers"
 	"flag"
 	"log"
 	"os"
@@ -10,14 +18,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
-
-	"ehang.io/nps/lib/file"
-	"ehang.io/nps/lib/install"
-	"ehang.io/nps/lib/version"
-	"ehang.io/nps/server"
-	"ehang.io/nps/server/connection"
-	"ehang.io/nps/server/tool"
-	"ehang.io/nps/web/routers"
 
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/crypt"
@@ -47,9 +47,14 @@ func main() {
 	if level = beego.AppConfig.String("log_level"); level == "" {
 		level = "7"
 	}
-	maxThreads, errThreads := beego.AppConfig.Int("max_threads")
-	if errThreads == nil {
+
+	if maxThreads, errThreads := beego.AppConfig.Int("max_threads"); errThreads == nil {
 		debug.SetMaxThreads(maxThreads)
+	}
+	if reteFlag := common.GetRateFlag(); reteFlag == true {
+		logs.Info("=============已开启 allow_rate_limit 带宽限速 =================")
+	} else {
+		logs.Info("=============未开启 allow_rate_limit 带宽限速 =================")
 	}
 
 	logs.Reset()
@@ -197,7 +202,7 @@ func (p *nps) run() error {
 
 func run() {
 	routers.Init()
-	task := &file.Tunnel{
+	task := &models.NpsClientTaskInfo{
 		Mode: "webServer",
 	}
 	bridgePort, err := beego.AppConfig.Int("bridge_port")
@@ -211,6 +216,7 @@ func run() {
 	crypt.InitTls()
 	tool.InitAllowPort()
 	tool.StartSystemInfo()
+	db.InitDb()
 	timeout, err := beego.AppConfig.Int("disconnect_timeout")
 	if err != nil {
 		timeout = 60
