@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"ehang.io/nps/models"
 	"io"
 	"net"
 	"strings"
@@ -10,7 +11,6 @@ import (
 	"ehang.io/nps/bridge"
 	"ehang.io/nps/lib/common"
 	"ehang.io/nps/lib/conn"
-	"ehang.io/nps/lib/file"
 	"github.com/astaxie/beego/logs"
 )
 
@@ -20,14 +20,14 @@ type UdpModeServer struct {
 	listener *net.UDPConn
 }
 
-func NewUdpModeServer(bridge *bridge.Bridge, task *file.Tunnel) *UdpModeServer {
+func NewUdpModeServer(bridge *bridge.Bridge, task *models.NpsClientTaskInfo) *UdpModeServer {
 	s := new(UdpModeServer)
 	s.bridge = bridge
 	s.task = task
 	return s
 }
 
-//开始
+// 开始
 func (s *UdpModeServer) Start() error {
 	var err error
 	if s.task.ServerIp == "" {
@@ -58,18 +58,20 @@ func (s *UdpModeServer) process(addr *net.UDPAddr, data []byte) {
 		if ok {
 			clientConn.Write(data)
 			s.task.Flow.Add(int64(len(data)), 0)
+			s.ClientStatisticDao.UpdateFlow(s.task.Client.Id, s.task.Flow.InletFlow, s.task.Flow.ExportFlow)
 		}
 	} else {
 		if err := s.CheckFlowAndConnNum(s.task.Client); err != nil {
 			logs.Warn("client id %d, task id %d,error %s, when udp connection", s.task.Client.Id, s.task.Id, err.Error())
 			return
 		}
+		defer s.UpdateConnectNum(s.task.Client.Id, s.task.Client.NowConnectNum)
 		defer s.task.Client.AddConn()
-		link := conn.NewLink(common.CONN_UDP, s.task.Target.TargetStr, s.task.Client.Cnf.Crypt, s.task.Client.Cnf.Compress, addr.String(), s.task.Target.LocalProxy)
+		link := conn.NewLink(common.CONN_UDP, s.task.TargetStr, s.task.Client.IsCrypt, s.task.Client.IsCompress, addr.String(), s.task.IsLocalProxy)
 		if clientConn, err := s.bridge.SendLinkInfo(s.task.Client.Id, link, s.task); err != nil {
 			return
 		} else {
-			target := conn.GetConn(clientConn, s.task.Client.Cnf.Crypt, s.task.Client.Cnf.Compress, nil, true)
+			target := conn.GetConn(clientConn, s.task.Client.IsCrypt, s.task.Client.IsCompress, nil, true)
 			s.addrMap.Store(addr.String(), target)
 			defer target.Close()
 
@@ -90,6 +92,7 @@ func (s *UdpModeServer) process(addr *net.UDPAddr, data []byte) {
 					s.task.Flow.Add(0, int64(n))
 				}
 			}
+			s.ClientStatisticDao.UpdateFlow(s.task.Client.Id, s.task.Flow.InletFlow, s.task.Flow.ExportFlow)
 		}
 	}
 }
