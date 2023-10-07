@@ -55,10 +55,34 @@
 		<zh-CN>文件访问</zh-CN>
 		<en-US>File server</en-US>
 	</lang>
+	<lang id="scheme-tunnel">
+		<zh-CN>隧道管理</zh-CN>
+		<en-US>Tunnel Mange</en-US>
+	</lang>
+	<lang id="scheme-config">
+		<zh-CN>配置管理</zh-CN>
+		<en-US>Config Mange</en-US>
+	</lang>
 
 	<lang id="page-clientlist">
 		<zh-CN>客户端列表</zh-CN>
 		<en-US>Client list</en-US>
+	</lang>
+	<lang id="page-listtunnel">
+		<zh-CN>隧道管理</zh-CN>
+		<en-US>tunnel list</en-US>
+	</lang>
+	<lang id="page-tunneladd">
+		<zh-CN>新增隧道类型</zh-CN>
+		<en-US>Add TunnelType</en-US>
+	</lang>
+	<lang id="word-productkey">
+		<zh-CN>产品Key</zh-CN>
+		<en-US>proudctKey</en-US>
+	</lang>
+	<lang id="word-tunneltypes">
+		<zh-CN>例：LAN,P2P,Relay</zh-CN>
+		<en-US>eg：LAN,P2P,Relay</en-US>
 	</lang>
 	<lang id="page-clientadd">
 		<zh-CN>新增客户端</zh-CN>
@@ -526,6 +550,10 @@
 	<lang id="word-version">
 		<zh-CN>版本</zh-CN>
 		<en-US>Version</en-US>
+	</lang>
+	<lang id="word-productkey">
+		<zh-CN>产品Key</zh-CN>
+		<en-US>productkey</en-US>
 	</lang>
 	<lang id="word-virtualmemory">
 		<zh-CN>虚拟内存</zh-CN>
