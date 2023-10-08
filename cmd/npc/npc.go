@@ -22,7 +22,7 @@ import (
 
 var (
 	serverAddr     = flag.String("server", "", "Server addr (ip:port)")
-	cloudAddr      = flag.String("cloudAddr", "http://admin.skyworthtest.top/api", "创维云平台域名地址")
+	cloudAddr      = flag.String("cloudAddr", "", "")
 	configPath     = flag.String("config", "", "Configuration file path")
 	verifyKey      = flag.String("vkey", "", "Authentication key")
 	logType        = flag.String("log", "stdout", "Log output mode（stdout|file）")
