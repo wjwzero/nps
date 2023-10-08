@@ -2,9 +2,9 @@ package main
 
 import (
 	"ehang.io/nps/client"
+	"ehang.io/nps/lib/cloud"
 	"ehang.io/nps/lib/common"
-	"ehang.io/nps/lib/config"
-	"ehang.io/nps/lib/file"
+	"ehang.io/nps/lib/crypt"
 	"ehang.io/nps/lib/install"
 	"ehang.io/nps/lib/version"
 	"flag"
@@ -22,6 +22,7 @@ import (
 
 var (
 	serverAddr     = flag.String("server", "", "Server addr (ip:port)")
+	cloudAddr      = flag.String("cloudAddr", "http://admin.skyworthtest.top/api", "创维云平台域名地址")
 	configPath     = flag.String("config", "", "Configuration file path")
 	verifyKey      = flag.String("vkey", "", "Authentication key")
 	logType        = flag.String("log", "stdout", "Log output mode（stdout|file）")
@@ -29,9 +30,9 @@ var (
 	proxyUrl       = flag.String("proxy", "", "proxy socks5 url(eg:socks5://111:222@127.0.0.1:9007)")
 	logLevel       = flag.String("log_level", "7", "log level 0~7")
 	registerTime   = flag.Int("time", 2, "register time long /h")
-	localPort      = flag.Int("local_port", 2000, "p2p local port")
+	localPort      = flag.Int("local_port", 52000, "p2p local port")
 	password       = flag.String("password", "", "p2p password flag")
-	target         = flag.String("target", "", "p2p target")
+	target         = flag.String("target", "5212", "p2p target")
 	localType      = flag.String("local_type", "p2p", "p2p target")
 	logPath        = flag.String("log_path", "", "npc log path")
 	debug          = flag.Bool("debug", true, "npc debug")
@@ -39,7 +40,7 @@ var (
 	stunAddr       = flag.String("stun_addr", "stun.stunprotocol.org:3478", "stun server address (eg:stun.stunprotocol.org:3478)")
 	ver            = flag.Bool("version", false, "show current version")
 	disconnectTime = flag.Int("disconnect_timeout", 60, "not receiving check packet times, until timeout will disconnect the client")
-	localServer    *config.LocalServer
+	clientType     = flag.String("client_type", "source_device", "device peer client type")
 )
 
 func main() {
@@ -206,21 +207,14 @@ func (p *npc) run() error {
 
 func run() {
 	common.InitPProfFromArg(*pprofAddr)
-	//p2p or secret command
-	if *password != "" {
-		commonConfig := new(config.CommonConfig)
-		commonConfig.Server = *serverAddr
-		commonConfig.VKey = *verifyKey
-		commonConfig.Tp = *connType
-		localServer := new(config.LocalServer)
-		localServer.Type = *localType
-		localServer.Password = *password
-		localServer.Target = *target
-		localServer.Port = *localPort
-		commonConfig.Client = new(file.Client)
-		commonConfig.Client.Cnf = new(file.Config)
-		go client.StartLocalServer(localServer, commonConfig)
-		return
+	if *serverAddr == "" {
+		serverIp, _ := cloud.GetNpsNodeExternalIp(*cloudAddr, *verifyKey)
+		*serverAddr = serverIp + ":8024"
+	}
+	logs.Info("client连接地址:", *serverAddr)
+	// 源设备 自动加延
+	if *clientType == "source_device" {
+		*verifyKey = crypt.VkeyEncodingSign(*verifyKey)
 	}
 	env := common.GetEnvMap()
 	if *serverAddr == "" {
@@ -232,10 +226,11 @@ func run() {
 	logs.Info("the version of client is %s, the core version of client is %s", version.VERSION, version.GetVersion())
 	if *verifyKey != "" && *serverAddr != "" && *configPath == "" {
 		go func() {
-			for {
+			for i := 0; i <= 10; i++ {
 				client.NewRPClient(*serverAddr, *verifyKey, *connType, *proxyUrl, nil, *disconnectTime).Start()
 				logs.Info("Client closed! It will be reconnected in five seconds")
-				time.Sleep(time.Second * 5)
+				time.Sleep(time.Minute * 10)
+				logs.Error("Client Run Fail! DK :%s", *verifyKey)
 			}
 		}()
 	} else {
@@ -244,8 +239,4 @@ func run() {
 		}
 		go client.StartFromFile(*configPath)
 	}
-}
-
-func (p *npc) connStatus() string {
-	return localServer.ConnStatus
 }
