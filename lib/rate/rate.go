@@ -1,6 +1,7 @@
 package rate
 
 import (
+	"ehang.io/nps/lib/common"
 	"sync/atomic"
 	"time"
 )
@@ -23,7 +24,11 @@ func NewRate(addSize int64) *Rate {
 }
 
 func (s *Rate) Start() {
-	go s.session()
+	if reteFlag := common.GetRateFlag(); reteFlag == true {
+		go s.session()
+	} else {
+		atomic.AddInt64(&s.bucketSurplusSize, s.bucketAddSize)
+	}
 }
 
 func (s *Rate) add(size int64) {
@@ -37,26 +42,32 @@ func (s *Rate) add(size int64) {
 //回桶
 func (s *Rate) ReturnBucket(size int64) {
 	s.add(size)
+
 }
 
 //停止
 func (s *Rate) Stop() {
-	s.stopChan <- true
+	if reteFlag := common.GetRateFlag(); reteFlag == true {
+		s.stopChan <- true
+	}
 }
 
 func (s *Rate) Get(size int64) {
-	if s.bucketSurplusSize >= size {
-		atomic.AddInt64(&s.bucketSurplusSize, -size)
-		return
-	}
-	ticker := time.NewTicker(time.Millisecond * 100)
-	for {
-		select {
-		case <-ticker.C:
-			if s.bucketSurplusSize >= size {
-				atomic.AddInt64(&s.bucketSurplusSize, -size)
-				ticker.Stop()
-				return
+	// 当开启限流时
+	if reteFlag := common.GetRateFlag(); reteFlag == true {
+		if s.bucketSurplusSize >= size {
+			atomic.AddInt64(&s.bucketSurplusSize, -size)
+			return
+		}
+		ticker := time.NewTicker(time.Millisecond * 100)
+		for {
+			select {
+			case <-ticker.C:
+				if s.bucketSurplusSize >= size {
+					atomic.AddInt64(&s.bucketSurplusSize, -size)
+					ticker.Stop()
+					return
+				}
 			}
 		}
 	}
