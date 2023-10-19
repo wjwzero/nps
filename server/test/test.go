@@ -1,20 +1,24 @@
 package test
 
 import (
+	"ehang.io/nps/db"
+	"ehang.io/nps/models"
 	"log"
 	"path/filepath"
 	"strconv"
 
 	"ehang.io/nps/lib/common"
-	"ehang.io/nps/lib/file"
 	"github.com/astaxie/beego"
 )
+
+var TaskDao db.TaskDao
 
 func TestServerConfig() {
 	var postTcpArr []int
 	var postUdpArr []int
-	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
-		v := value.(*file.Tunnel)
+	//TaskDao.LoadTaskFromDB()
+	TaskDao.Tasks.Range(func(key, value interface{}) bool {
+		v := value.(*models.NpsClientTaskInfo)
 		if v.Mode == "udp" {
 			isInArr(&postUdpArr, v.Port, v.Remark, "udp")
 		} else if v.Port != 0 {
