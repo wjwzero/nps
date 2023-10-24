@@ -14,6 +14,9 @@ func Init() {
 			beego.NSAutoRouter(&controllers.LoginController{}),
 			beego.NSAutoRouter(&controllers.ClientController{}),
 			beego.NSAutoRouter(&controllers.AuthController{}),
+			beego.NSAutoRouter(&controllers.ReportController{}),
+			beego.NSAutoRouter(&controllers.TunnelController{}),
+			beego.NSAutoRouter(&controllers.ConfigController{}),
 		)
 		beego.AddNamespace(ns)
 	} else {
@@ -22,5 +25,10 @@ func Init() {
 		beego.AutoRouter(&controllers.LoginController{})
 		beego.AutoRouter(&controllers.ClientController{})
 		beego.AutoRouter(&controllers.AuthController{})
+		beego.AutoRouter(&controllers.ReportController{})
+		beego.AutoRouter(&controllers.TunnelController{})
+		beego.AutoRouter(&controllers.ConfigController{})
 	}
+	beego.SetStaticPath("/swagger", "swagger")
+
 }
