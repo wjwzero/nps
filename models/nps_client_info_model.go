@@ -20,6 +20,7 @@ type NpsClientInfo struct {
 	Addr              string     `xorm:"'addr'" json:"Addr"`                              // ip地址
 	BasicAuthUser     string     `xorm:"'basic_auth_user'" json:"BasicAuthUser"`          // Basic 认证用户名
 	BasicAuthPass     string     `xorm:"'basic_auth_pass'" json:"BasicAuthPass"`          // Basic 认证密码
+	ProductKey        string     `xorm:"'product_key'" json:"ProductKey"`                 //产品Key
 	DeviceKey         string     `xorm:"'device_key'" json:"DeviceKey"`                   // 设备Key
 	Version           string     `xorm:"'version'" json:"Version"`                        // 版本
 	Status            bool       `xorm:"'status'" json:"Status"`                          // 状态 1:开放 0:关闭
