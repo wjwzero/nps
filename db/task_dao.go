@@ -4,6 +4,7 @@ import (
 	"ehang.io/nps/lib/file"
 	. "ehang.io/nps/models"
 	"errors"
+	"fmt"
 	"github.com/astaxie/beego/logs"
 	"sync"
 )
@@ -14,28 +15,30 @@ type TaskDao struct {
 
 var taskUpdateCols = []string{"client_id", "remark", "mode", "server_ip", "port", "password", "target_addr", "local_path", "strip_pre", "target_str", "is_local_proxy"}
 
-func (td *TaskDao) LoadTaskFromDB() {
-	list, num := td.GetTunnelAllList()
-	if num == 0 {
-		return
-	}
-	for _, v := range list {
-		td.Tasks.Store(v.Id, v)
-	}
-}
+//func (td *TaskDao) LoadTaskFromDB() {
+//	list, num := td.GetTunnelAllList()
+//	if num == 0 {
+//		return
+//	}
+//	for _, v := range list {
+//		td.Tasks.Store(v.Id, v)
+//	}
+//}
 
 func (td TaskDao) NewTask(t *NpsClientTaskInfo) (err error) {
 	value := td.GetTaskByPassword(t.Password)
 	if value != nil && (value.Mode == "secret" || value.Mode == "p2p") {
-		logs.Error("secret mode keys %s must be unique", t.Password)
-		return
+		errorStr := fmt.Sprintf("secret mode keys %s must be unique", t.Password)
+		logs.Error(errorStr)
+		return errors.New(errorStr)
 	}
 	td.Save(t)
 	return
 }
 
 func (TaskDao) GetTaskByPassword(password string) (task *NpsClientTaskInfo) {
-	has, dbErr := DbEngine.Where("password = ?", password).Get(task)
+	t := new(NpsClientTaskInfo)
+	has, dbErr := DbEngine.Where(" password = ?", password).Get(t)
 	if !has {
 		dbErr = errors.New("根据唯一标识密钥未找到隧道")
 	}
@@ -43,11 +46,14 @@ func (TaskDao) GetTaskByPassword(password string) (task *NpsClientTaskInfo) {
 		logs.Warn(dbErr)
 		return
 	}
-	return
+	t.Client = new(NpsClientListInfo)
+	t.Client.Id = t.ClientId
+	return t
 }
 
 // md5 password
-func (TaskDao) GetTaskByMd5Password(p string) (t *NpsClientTaskInfo) {
+func (TaskDao) GetTaskByMd5Password(p string) (task *NpsClientTaskInfo) {
+	t := new(NpsClientTaskInfo)
 	has, dbErr := DbEngine.Where("MD5(password) = ?", p).Get(t)
 	if !has {
 		dbErr = errors.New("根据MD5唯一标识密钥未找到隧道")
@@ -56,10 +62,15 @@ func (TaskDao) GetTaskByMd5Password(p string) (t *NpsClientTaskInfo) {
 		logs.Error(dbErr)
 		return
 	}
-	return
+	t.Client = new(NpsClientListInfo)
+	t.Client.Id = t.ClientId
+	return t
 }
 
 func (TaskDao) Save(t *NpsClientTaskInfo) error {
+	if t.Client != nil {
+		t.ClientId = t.Client.Id
+	}
 	_, dbErr := DbEngine.Insert(t)
 	if dbErr != nil {
 		logs.Error(dbErr)
@@ -253,6 +264,14 @@ func (TaskDao) GetTunnelList(start, length int, typeVal string, clientId int, se
 }
 func (td TaskDao) UpdateTaskStatus(t *NpsClientTaskInfo) error {
 	_, dbErr := DbEngine.ID(t.Id).Cols("status").Update(t)
+	if dbErr != nil {
+		logs.Error(dbErr)
+	}
+	return dbErr
+}
+
+func (td TaskDao) UpdateTaskRunStatus(t *NpsClientTaskInfo) error {
+	_, dbErr := DbEngine.ID(t.Id).Cols("run_status").Update(t)
 	if dbErr != nil {
 		logs.Error(dbErr)
 	}
