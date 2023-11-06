@@ -47,7 +47,7 @@ retry:
 // getNpsNodeExternalIp 从云平台获得节点外部IP地址 client 使用
 func getNpsNodeExternalIp(cloudAddr string, deviceKey string) (ip string, err error) {
 	var data CommonData
-	resp, err := http.Get(cloudAddr + "/skyworthDispatch/node/nps/ip?deviceKey=" + deviceKey)
+	resp, err := http.Get(cloudAddr + "/ip?deviceKey=" + deviceKey)
 	if err != nil {
 		return "", err
 	}
@@ -66,7 +66,7 @@ func CheckPassword(cloudAddr string, vKey string, password string) (res bool, er
 	sign := crypt.CreateSign([]string{vKey, password})
 	var data CommonData
 	cloudAddr = beego.AppConfig.String("cloudAddr")
-	resp, err := http.Get(cloudAddr + "/skyworthUser/nas/device/judgeNasPassword?password=" + password + "&deviceKey=" + vKey + "&authString=" + sign)
+	resp, err := http.Get(cloudAddr + "/judgeNasPassword?password=" + password + "&deviceKey=" + vKey + "&authString=" + sign)
 	if err != nil {
 		return false, err
 	}
@@ -87,7 +87,7 @@ func CheckPassword(cloudAddr string, vKey string, password string) (res bool, er
 func CheckDeviceKey(cloudAddr string, deviceKey string) (res bool, productKey string, err error) {
 	sign := crypt.CreateSign([]string{deviceKey})
 	var data CommonData
-	resp, err := http.Get(cloudAddr + "/skyworthDevice/devices/judgeDeviceExist?deviceKey=" + deviceKey + "&authString=" + sign)
+	resp, err := http.Get(cloudAddr + "/judgeDeviceExist?deviceKey=" + deviceKey + "&authString=" + sign)
 	if err != nil {
 		return false, "", err
 	}
