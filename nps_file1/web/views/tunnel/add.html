@@ -1,0 +1,31 @@
+<div class="row">
+    <div class="col-md-12 col-md-auto">
+        <div class="ibox float-e-margins">
+            <h3 class="ibox-title" langtag="page-tunneladd"></h3>
+            <div class="ibox-content">
+                <form class="form-horizontal">
+                    <div class="form-group" id="remark">
+                        <label class="control-label font-bold" >产品Key</label>
+                        <div class="col-sm-10">
+                            <input class="form-control" type="text" name="productKey" placeholder="" langtag="word-productkey">
+                        </div>
+                    </div>
+                    <div class="form-group" id="u">
+                        <label class="control-label font-bold" >隧道字符串(多个由英文逗号分割 例：LAN,P2P,Relay)</label>
+                        <div class="col-sm-10">
+                            <input class="form-control" type="text" name="tunnelType" placeholder="" langtag="word-tunneltypes">
+                        </div>
+                    </div>
+                    <div class="hr-line-dashed"></div>
+                    <div class="form-group">
+                        <div class="col-sm-4 col-sm-offset-2">
+                            <button class="btn btn-success" type="button" onclick="submitform('add', '{{.web_base_url}}/tunnel/add', $('form').serializeArray())">
+                                <i class="fa fa-fw fa-lg fa-check-circle"></i> <span langtag="word-add"></span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
