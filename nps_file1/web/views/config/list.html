@@ -1,0 +1,103 @@
+<div class="wrapper wrapper-content animated fadeInRight">
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="ibox float-e-margins">
+                <div class="ibox-title">
+                    <h5 langtag="page-listtunnel"></h5>
+
+                    <div class="ibox-tools">
+                        <a class="collapse-link">
+                            <i class="fa fa-chevron-up"></i>
+                        </a>
+                        <a class="close-link">
+                            <i class="fa fa-times"></i>
+                        </a>
+                    </div>
+                </div>
+                <div class="content">
+                    {{if eq true .isAdmin}}
+
+                    <div class="table-responsive">
+                        <div id="toolbar1">
+                        </div>
+                        <table id="taskList_table1" class="table-striped table-hover" data-mobile-responsive="true"></table>
+                    </div>
+                </div>
+                {{end}}
+                <div class="ibox-content">
+
+                    <table id="table1"></table>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    /*bootstrap table*/
+    $('#table1').bootstrapTable({
+        toolbar: "#toolbar1",
+        method: 'post', // 服务器数据的请求方式 get or post
+        url: "{{.web_base_url}}/config/configlist", // 服务器数据的加载地址
+        contentType: "application/x-www-form-urlencoded",
+        striped: true, // 设置为true会有隔行变色效果
+        search: false,
+        showHeader: true,
+        showColumns: true,
+        showRefresh: true,
+        pagination: true,//分页
+        sidePagination: 'server',//服务器端分页
+        pageNumber: 1,
+        pageList: [5, 10, 20, 50],//分页步进值
+        detailView: true,
+        smartDisplay: true, // 智能显示 pagination 和 cardview 等
+        onExpandRow: function () {$('body').setLang ('.detail-view');},
+        onPostBody: function (data) { if ($(this)[0].locale != undefined ) $('body').setLang ('#table1'); },
+        detailFormatter: function (index, row, element) {
+            return '<b langtag="word-maxconnections"></b>: ' + row.MaxConn + '&emsp;'
+                + '<b langtag="word-curconnections"></b>: ' + row.NowConn + '&emsp;'
+                + '<b langtag="word-flowlimit"></b>: ' + row.Flow.FlowLimit + 'm&emsp;'
+                + '<b langtag="word-ratelimit"></b>: ' + row.RateLimit + 'kb/s&emsp;'
+                + '<b langtag="word-maxtunnels"></b>: ' + row.MaxTunnelNum + '&emsp;<br/><br/>'
+                + '<b langtag="word-webusername"></b>: ' + row.WebUserName + '&emsp;'
+                + '<b langtag="word-webpassword"></b>: ' + row.WebPassword + '&emsp;'
+                + '<b langtag="word-basicusername"></b>: ' + row.Cnf.U + '&emsp;'
+                + '<b langtag="word-basicpassword"></b>: ' + row.Cnf.P + '&emsp;<br/><br/>'
+                + '<b langtag="word-crypt"></b>: <span langtag="word-' + row.Cnf.Crypt + '"></span>&emsp;'
+                + '<b langtag="word-compress"></b>: <span langtag="word-' + row.Cnf.Compress + '"></span>&emsp;'
+                + '<b langtag="word-connectbyconfig"></b>: <span langtag="word-' + row.ConfigConnAllow + '"></span>&emsp;<br/><br/>'
+                + '<b langtag="word-commandclient"></b>: ' + "<code>./npc{{.win}} -server={{.ip}}:{{.p}} -vkey=" + row.VerifyKey + " -type=" +{{.bridgeType}} +"</code>"
+        },
+        //表格的列
+        columns: [
+            {
+                field: 'Key',//域值
+                title: '<span>键</span>',//标题
+                halign: 'center',
+                visible: true//false表示不显示
+            },
+            {
+                field: 'Value',//域值
+                title: '<span>值</span>',//标题
+                halign: 'center',
+                visible: true//false表示不显示
+            },
+            {
+                field: 'option',//域值
+                title: '<span langtag="word-option"></span>',//内容
+                align: 'center',
+                halign: 'center',
+                visible: true,//false表示不显示
+                formatter: function (value, row, index) {
+                    btn_group = '<div class="btn-group">'
+
+                    btn_group += '<a href="{{.web_base_url}}/config/edit?key=' + row.Key
+                    btn_group += '" class="btn btn-outline btn-success"><i class="fa fa-edit"></i></a></div>'
+                    return btn_group
+                }
+            }
+        ]
+    });
+</script>
