@@ -89,3 +89,14 @@ ln -s ~/GolandProjects/nps_file/web /tmp/GoLand/
     + 入参 verifyKey 与 password 需签名加密  （加密方式为 加延 32-bit MD5 前4位 参考 crypt文件）
 2. cmd/npc/npc.go 编译打包后为 设备端使用的[SDK](#NPC)
     + 入参 verifyKey 不需加密
+      last line evaluated; use to further iterate
+      DBQuery.shellBatchSize = x   set default number of items to display on shell
+      exit                         quit the mongo shell
+> show dbs
+app_push  0.041GB
+> show collections
+user_mqtt_password
+> db.user_mqtt_password.find({userId:"18729891158"})
+> db.user_mqtt_password.find({"userId":"18729891158"})
+> db.user_mqtt_password.find({"userId":"1471374560472338434"})
+{ "_id" : ObjectId("61bae3f97182c400016f8cec"), "userId" : "1471374560472338434", "password" : "8b752df2030c4336a551e3b9f3150837", "time" : NumberLong("1639638009582"), "_class" : "com.skyworthdigital.apppush.entity.mongodb.UserMqttPassword" }
